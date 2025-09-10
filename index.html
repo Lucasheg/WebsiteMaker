@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>CITEKS Website Maker (Form Edition)</title>
-<meta name="description" content="Fill a brief → generate a professional one-page site preview. No build tools required." />
+<title>CITEKS Website Maker</title>
+<meta name="robots" content="noindex,nofollow" />
+<meta name="description" content="Private site maker for CITEKS — paste a client brief, get a professional one-page preview." />
 <style>
   :root{
     --bg:#f7f7f7; --panel:#ffffff; --ink:#0f172a; --muted:#475569; --hair:#e5e7eb; --accent:#0ea5e9;
@@ -12,7 +13,7 @@
   }
   html,body{height:100%; background:var(--bg); color:var(--ink); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
   *{box-sizing:border-box}
-  .wrap{display:grid; grid-template-columns:minmax(320px, 520px) 1fr; gap:16px; padding:16px; max-width:1440px; margin:0 auto;}
+  .wrap{display:grid; grid-template-columns:minmax(340px, 520px) 1fr; gap:16px; padding:16px; max-width:1440px; margin:0 auto;}
   .panel{background:var(--panel); border:1px solid var(--hair); border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.04);}
   .container{max-width:1200px; margin:0 auto; padding:0 16px;}
   .btn{display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:#fff; padding:10px 14px; border-radius:999px; text-decoration:none; border:none; cursor:pointer;}
@@ -52,69 +53,84 @@
 </head>
 <body>
   <div class="wrap">
-    <!-- Left: Brief form -->
+    <!-- Left: Input -->
     <aside class="panel" style="padding:16px; align-self:start;">
-      <div class="ts-h5" style="font-weight:700">Brief</div>
-      <p class="ts-h6 tips" style="margin-top:4px">Fill what you know. The preview updates live.</p>
+      <div class="ts-h5" style="font-weight:700">Client Input</div>
+      <p class="ts-h6 tips" style="margin-top:4px">Paste your client’s info list (any order), or use the quick form.</p>
 
-      <div style="display:grid; gap:10px; margin-top:12px">
-        <label class="ts-h6">Company name <input id="name" class="input" placeholder="e.g., Harbor & Sage Law"></label>
-        <label class="ts-h6">Tagline <input id="tagline" class="input" placeholder="Practical counsel for complex transactions"></label>
-        <label class="ts-h6">Locations (comma separated) <input id="locations" class="input" placeholder="Oslo, New York, Amsterdam"></label>
-        <label class="ts-h6">Industry
-          <select id="industry" class="input">
-            <option value="law">Law</option>
-            <option value="clinic">Clinic</option>
-            <option value="gym">Gym</option>
-            <option value="saas">SaaS</option>
-          </select>
-        </label>
-        <div class="grid" style="grid-template-columns:1fr 1fr; gap:8px">
-          <label class="ts-h6">Primary color <input id="primary" class="input" value="#0F172A"></label>
-          <label class="ts-h6">Accent color <input id="accent" class="input" value="#0EA5E9"></label>
+      <details open style="margin-top:8px">
+        <summary class="ts-h6" style="cursor:pointer">Paste info (plain text)</summary>
+        <textarea id="plain" class="input" rows="12" placeholder="Example:
+Company / brand: Alder & Co Dental
+Tagline: Modern care, minimal wait
+Locations: Oslo, Bergen
+Industry: clinic
+Goal of the site: Book appointment
+Available assets: Logo, photos
+SEO targets: dentist oslo; emergency dentist
+Integrations: Booking, Maps
+Testimonials: Super gentle — CEO, Nord
+Logos: FjordCare, SmilLab
+Metrics: Patients served: 12,500
+Hero image URL: https://.../hero.jpg
+"></textarea>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button class="btn" id="parsePlain" type="button">Parse</button>
+          <button class="btn sec" id="clearPlain" type="button">Clear</button>
         </div>
-        <label class="ts-h6">Neutral background <input id="secondary" class="input" value="#F7F7F7"></label>
-        <label class="ts-h6">Hero image URL (optional) <input id="hero" class="input" placeholder="https://…/your-image.jpg"></label>
+      </details>
 
-        <label class="ts-h6">Primary goal
-          <select id="goal" class="input">
-            <option>Consultation</option>
-            <option>Book appointment</option>
-            <option>Start demo</option>
-            <option>Get quote</option>
-          </select>
-        </label>
+      <div class="thin" style="margin:12px 0"></div>
 
-        <label class="ts-h6">Differentiators (one per line)
-          <textarea id="diff" class="input" rows="3" placeholder="Clear fee structures&#10;Ex in-house counsel bench"></textarea>
-        </label>
+      <details>
+        <summary class="ts-h6" style="cursor:pointer">Or fill quick form</summary>
+        <div style="display:grid; gap:10px; margin-top:8px">
+          <label class="ts-h6">Company name <input id="name" class="input" placeholder="e.g., Harbor & Sage Law"></label>
+          <label class="ts-h6">Tagline <input id="tagline" class="input" placeholder="Practical counsel for complex transactions"></label>
+          <label class="ts-h6">Locations (comma) <input id="locations" class="input" placeholder="Oslo, New York, Amsterdam"></label>
+          <label class="ts-h6">Industry
+            <select id="industry" class="input">
+              <option value="">(auto-detect)</option>
+              <option value="law">Law</option>
+              <option value="clinic">Clinic</option>
+              <option value="gym">Gym</option>
+              <option value="saas">SaaS</option>
+            </select>
+          </label>
+          <div class="grid" style="grid-template-columns:1fr 1fr; gap:8px">
+            <label class="ts-h6">Primary color <input id="primary" class="input" value="#0F172A"></label>
+            <label class="ts-h6">Accent color <input id="accent" class="input" value="#0EA5E9"></label>
+          </div>
+          <label class="ts-h6">Neutral background <input id="secondary" class="input" value="#F7F7F7"></label>
+          <label class="ts-h6">Hero image URL (optional) <input id="hero" class="input" placeholder="https://…/your-image.jpg"></label>
+          <label class="ts-h6">Primary goal
+            <select id="goal" class="input">
+              <option>Consultation</option>
+              <option>Book appointment</option>
+              <option>Start demo</option>
+              <option>Get quote</option>
+            </select>
+          </label>
+          <label class="ts-h6">Differentiators (one per line)
+            <textarea id="diff" class="input" rows="3" placeholder="Clear fee structures&#10;Ex in-house counsel bench"></textarea>
+          </label>
+          <label class="ts-h6">Testimonials (one per line: quote — author)
+            <textarea id="testi" class="input" rows="3" placeholder="They guided a complex deal. — COO, Meridian"></textarea>
+          </label>
+          <label class="ts-h6">Client logos (comma) <input id="logos" class="input" placeholder="Aldin Capital, Meridian Partners"></label>
+          <label class="ts-h6">Metrics (one per line: Label: Value)
+            <textarea id="metrics" class="input" rows="3" placeholder="Deals advised: 220&#10;Average close time: 14 days"></textarea>
+          </label>
+        </div>
+      </details>
 
-        <label class="ts-h6">Testimonials (one per line: quote — author)
-          <textarea id="testi" class="input" rows="3" placeholder="They guided a complex deal. — COO, Meridian"></textarea>
-        </label>
-
-        <label class="ts-h6">Client logos (comma separated) <input id="logos" class="input" placeholder="Aldin Capital, Meridian Partners, Koto Energy"></label>
-
-        <label class="ts-h6">Metrics (one per line: Label: Value)
-          <textarea id="metrics" class="input" rows="3" placeholder="Deals advised: 220&#10;Average close time: 14 days"></textarea>
-        </label>
-      </div>
-
-      <div style="display:flex; gap:8px; margin-top:12px">
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px">
         <button class="btn" id="loadExample" type="button">Load example</button>
         <button class="btn sec" id="exportHtml" type="button">Export HTML</button>
       </div>
-
-      <div class="thin" style="margin:12px 0"></div>
-      <details>
-        <summary class="ts-h6" style="cursor:pointer">Advanced: JSON view</summary>
-        <p class="ts-h6 tips" style="margin:8px 0 4px">You can paste JSON here instead of the form:</p>
-        <textarea id="json" class="input" rows="12" placeholder='{"company":{...}}'></textarea>
-        <div id="err" class="ts-h6" style="color:#dc2626; margin-top:8px;"></div>
-      </details>
     </aside>
 
-    <!-- Right: Site preview -->
+    <!-- Right: Preview -->
     <section>
       <header class="panel site">
         <div class="ts-h6" id="brandName" style="font-weight:600">Brand</div>
@@ -134,7 +150,7 @@
   </div>
 
 <script>
-/* ===== Sample brief (used by "Load example") ===== */
+/* ===== Sample brief (for "Load example") ===== */
 const SAMPLE = {
   company: {
     name: "Harbor & Sage Law",
@@ -153,7 +169,7 @@ const SAMPLE = {
   pages: { mustHave:["home","services","pricing","contact"] }
 };
 
-/* ===== Playbooks per industry ===== */
+/* ===== Industry playbooks (deterministic) ===== */
 const PLAYBOOKS = {
   law:   { heroKind:"editorial", ctas:{primary:"Book consultation", secondary:"Download brochure"} },
   clinic:{ heroKind:"image",     ctas:{primary:"Book appointment", secondary:"Call clinic"} },
@@ -161,7 +177,96 @@ const PLAYBOOKS = {
   saas:  { heroKind:"product",   ctas:{primary:"Start demo",       secondary:"Talk to sales"} }
 };
 
-/* ===== Generator: brief -> dsl ===== */
+/* ===== Parse plain text list into a brief ===== */
+function parsePlainText(s) {
+  const lines = (s||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const get = (key) => {
+    const rx = new RegExp("^" + key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + "\\s*:\\s*(.+)$","i");
+    const row = lines.find(l=>rx.test(l));
+    return row ? row.replace(rx, "$1").trim() : "";
+  };
+  const list = (val)=> val ? val.split(",").map(x=>x.trim()).filter(Boolean) : [];
+  const linesList = (key)=> {
+    const startIdx = lines.findIndex(l=> new RegExp("^"+key+"\\s*:", "i").test(l));
+    if (startIdx === -1) return [];
+    const rest = lines.slice(startIdx+1);
+    const block = [];
+    for (const ln of rest) {
+      if (/^\w[^:]+:\s*/.test(ln)) break; // next section
+      block.push(ln.replace(/^[-•]\s*/,'').trim());
+    }
+    return block.filter(Boolean);
+  };
+
+  const name = get("Company / brand") || get("Company") || get("Brand") || "";
+  const tagline = get("Tagline") || "";
+  const locations = list(get("Locations"));
+  let industry = (get("Industry")||"").toLowerCase();
+  if (!industry) industry = guessIndustry([name, tagline, get("Goal of the site")].join(" "));
+
+  const goalText = (get("Goal of the site")||"").toLowerCase();
+  const primaryGoal =
+    /book|appointment|schedule/.test(goalText) ? "Book appointment" :
+    /consult|advice|call/.test(goalText)         ? "Consultation" :
+    /demo|trial/.test(goalText)                  ? "Start demo" :
+    /quote|estimate|price/.test(goalText)        ? "Get quote" : "Consultation";
+
+  const heroImage = get("Hero image URL") || "";
+
+  const differentiators = []
+    .concat(linesList("Differentiators"))
+    .concat(list(get("Differentiators")))
+    .filter(Boolean);
+
+  const testimonials = []
+    .concat(linesList("Testimonials"))
+    .map(l=> {
+      const m = l.split("—");
+      return m[0] ? {quote:m[0].trim(), author:(m[1]||"").trim()} : null;
+    })
+    .filter(Boolean);
+
+  const logos = list(get("Logos"));
+
+  // Metrics like: "Patients served: 12,500"
+  const metricLines = []
+    .concat(linesList("Metrics"))
+    .concat(list(get("Metrics")));
+  const metrics = metricLines.map(l=>{
+    const m = l.split(":");
+    return (m[0] && m[1]) ? {label:m[0].trim(), value:m[1].trim()} : null;
+  }).filter(Boolean);
+
+  return {
+    company:{
+      name: name || "Your company",
+      tagline,
+      locations,
+      industry,
+      brand: {
+        primary: "#0F172A",
+        secondary: "#F7F7F7",
+        accent: "#0EA5E9",
+        heroImage: heroImage || null
+      }
+    },
+    goals:{ primary: primaryGoal, secondary: [] },
+    differentiators,
+    proof: { logos, testimonials, metrics },
+    pages: { mustHave:["home","services","pricing","contact"] }
+  };
+}
+
+function guessIndustry(text){
+  const s = (text||"").toLowerCase();
+  if (/law|legal|attorney|advokat|juridisk/.test(s)) return "law";
+  if (/dentist|clinic|doctor|health|dental|klinikk/.test(s)) return "clinic";
+  if (/gym|fitness|training|pt|coaching/.test(s)) return "gym";
+  if (/software|saas|platform|app/.test(s)) return "saas";
+  return "saas";
+}
+
+/* ===== Generator: brief -> DSL ===== */
 function generateDSL(brief){
   const pb = PLAYBOOKS[brief?.company?.industry] || PLAYBOOKS.saas;
   const brand = {
@@ -192,8 +297,7 @@ function generateDSL(brief){
     sections.push({ type:"value", title:"What you get with us", items:diffs });
   }
 
-  const services = deriveServices(brief?.company?.industry);
-  sections.push({ type:"services", title:"Services", items:services });
+  sections.push({ type:"services", title:"Services", items: deriveServices(brief?.company?.industry) });
 
   if (brief?.proof && (brief.proof.logos?.length || brief.proof.testimonials?.length || brief.proof.metrics?.length)){
     sections.push({
@@ -224,11 +328,6 @@ function deriveServices(industry){
     { title:"Commercial Contracts", text:"Clear, enforceable agreements that move business forward."},
     { title:"Data & Compliance", text:"Practical counsel on privacy and regulatory obligations."}
   ];
-  if (industry==="saas") return [
-    { title:"Onboarding flows", text:"Reduce time-to-value with frictionless onboarding."},
-    { title:"Pricing architecture", text:"Plans, entitlements, and clarity that convert."},
-    { title:"Docs & SEO", text:"Content that compounds organic growth."}
-  ];
   if (industry==="clinic") return [
     { title:"Primary care", text:"Accessible care with fast booking."},
     { title:"Specialists", text:"Targeted expertise and clear referrals."},
@@ -238,6 +337,11 @@ function deriveServices(industry){
     { title:"Elite Coaching", text:"High-intensity coaching for rapid progress."},
     { title:"Strength Builder", text:"Progressive overload with accountability."},
     { title:"Conditioning Lab", text:"Cardio and mobility for sustainable energy."}
+  ];
+  if (industry==="saas") return [
+    { title:"Onboarding flows", text:"Reduce time-to-value with frictionless onboarding."},
+    { title:"Pricing architecture", text:"Plans, entitlements, and clarity that convert."},
+    { title:"Docs & SEO", text:"Content that compounds organic growth."}
   ];
   return [
     { title:"Strategy & IA", text:"Define goals, sitemap, and decision pathways."},
@@ -264,7 +368,6 @@ function renderSite(dsl){
     app.appendChild(sectionEl(s, brand));
   });
 
-  // simple reveal-on-scroll
   const obs = new IntersectionObserver((entries)=>{
     entries.forEach(e=>{ if(e.isIntersecting) e.target.classList.add("visible"); });
   }, {threshold:0.25});
@@ -374,7 +477,7 @@ function sectionEl(s, brand){
   return wrap;
 }
 
-/* ===== Form -> brief ===== */
+/* ===== Live wiring ===== */
 function collectBrief(){
   const val = id => document.getElementById(id).value.trim();
   const asList = (s)=> s ? s.split(",").map(x=>x.trim()).filter(Boolean) : [];
@@ -388,12 +491,15 @@ function collectBrief(){
     return label && value ? {label, value} : null;
   }).filter(Boolean);
 
+  const industryRaw = document.getElementById("industry").value;
+  const decidedIndustry = industryRaw || guessIndustry([val("name"), val("tagline"), document.getElementById("goal").value].join(" "));
+
   return {
     company:{
       name: val("name") || "Your company",
       tagline: val("tagline"),
       locations: asList(val("locations")),
-      industry: document.getElementById("industry").value,
+      industry: decidedIndustry,
       brand: { primary: val("primary")||"#0F172A", secondary: val("secondary")||"#F7F7F7", accent: val("accent")||"#0EA5E9", heroImage: val("hero")||null }
     },
     goals:{ primary: document.getElementById("goal").value, secondary: [] },
@@ -403,18 +509,18 @@ function collectBrief(){
   };
 }
 
-/* ===== Wire up live updates ===== */
 function updateFromForm(){
-  const brief = collectBrief();
-  document.getElementById("json").value = JSON.stringify(brief, null, 2);
-  const dsl = generateDSL(brief);
+  const dsl = generateDSL(collectBrief());
   renderSite(dsl);
 }
+
 ["name","tagline","locations","industry","primary","accent","secondary","hero","goal","diff","testi","logos","metrics"].forEach(id=>{
-  document.getElementById(id).addEventListener("input", updateFromForm);
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("input", updateFromForm);
 });
+
 document.getElementById("loadExample").addEventListener("click", ()=>{
-  // fill form with SAMPLE
+  document.getElementById("plain").value = "";
   document.getElementById("name").value = SAMPLE.company.name;
   document.getElementById("tagline").value = SAMPLE.company.tagline;
   document.getElementById("locations").value = SAMPLE.company.locations.join(", ");
@@ -430,18 +536,31 @@ document.getElementById("loadExample").addEventListener("click", ()=>{
   document.getElementById("metrics").value = SAMPLE.proof.metrics.map(m=>`${m.label}: ${m.value}`).join("\n");
   updateFromForm();
 });
-document.getElementById("json").addEventListener("input", e=>{
-  try{
-    const b = JSON.parse(e.target.value);
-    document.getElementById("err").textContent = "";
-    const dsl = generateDSL(b);
-    renderSite(dsl);
-  }catch(err){
-    document.getElementById("err").textContent = "JSON error: " + err.message;
-  }
+
+document.getElementById("parsePlain").addEventListener("click", ()=>{
+  const txt = document.getElementById("plain").value;
+  const brief = parsePlainText(txt);
+  // Fill form with parsed values (so you can tweak)
+  document.getElementById("name").value = brief.company.name || "";
+  document.getElementById("tagline").value = brief.company.tagline || "";
+  document.getElementById("locations").value = (brief.company.locations||[]).join(", ");
+  document.getElementById("industry").value = brief.company.industry || "";
+  document.getElementById("primary").value = brief.company.brand.primary || "#0F172A";
+  document.getElementById("secondary").value = brief.company.brand.secondary || "#F7F7F7";
+  document.getElementById("accent").value = brief.company.brand.accent || "#0EA5E9";
+  document.getElementById("hero").value = brief.company.brand.heroImage || "";
+  document.getElementById("goal").value = brief.goals.primary || "Consultation";
+  document.getElementById("diff").value = (brief.differentiators||[]).join("\n");
+  document.getElementById("testi").value = (brief.proof.testimonials||[]).map(t=>`${t.quote} — ${t.author}`).join("\n");
+  document.getElementById("logos").value = (brief.proof.logos||[]).join(", ");
+  document.getElementById("metrics").value = (brief.proof.metrics||[]).map(m=>`${m.label}: ${m.value}`).join("\n");
+  updateFromForm();
 });
 
-/* ===== Export HTML ===== */
+document.getElementById("clearPlain").addEventListener("click", ()=>{
+  document.getElementById("plain").value = "";
+});
+
 document.getElementById("exportHtml").addEventListener("click", ()=>{
   const pageHtml = document.documentElement.outerHTML;
   const blob = new Blob([pageHtml], {type:"text/html"});
@@ -453,7 +572,6 @@ document.getElementById("exportHtml").addEventListener("click", ()=>{
 });
 
 /* ===== Initial render ===== */
-document.getElementById("json").value = JSON.stringify(SAMPLE, null, 2);
 document.getElementById("year").textContent = new Date().getFullYear();
 renderSite(generateDSL(SAMPLE));
 </script>
