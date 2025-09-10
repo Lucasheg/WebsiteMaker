@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CITEKS Maker</title>
+    <meta name="description" content="CITEKS Website Maker — from brief to live preview." />
+    <style>
+      :root{
+        --bg:#f7f7f7; --panel:#ffffff; --ink:#0f172a; --muted:#475569; --hair:#e5e7eb; --accent:#0ea5e9;
+        --p:16px; --h6:20px; --h5:25px; --h4:31.25px; --h3:39.06px; --h2:48.83px; --h1:61.04px;
+      }
+      html,body,#root { height:100%; background:var(--bg); color:var(--ink); }
+      .container { max-width:1200px; margin:0 auto; padding:0 20px; }
+      .grid{ display:grid; gap:16px; }
+      .panel{ background:var(--panel); border:1px solid var(--hair); border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.04); }
+      .btn{ display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:#fff; padding:10px 14px; border-radius:999px; text-decoration:none; border:none; cursor:pointer; }
+      .btn.sec{ background:#0f172a; }
+      .thin{ border-top:1px solid var(--hair); }
+
+      .ts-p{ font-size:var(--p); line-height:1.5;}
+      .ts-h6{ font-size:var(--h6); line-height:1.3; letter-spacing:-0.005em;}
+      .ts-h5{ font-size:var(--h5); line-height:1.3; letter-spacing:-0.01em;}
+      .ts-h4{ font-size:var(--h4); line-height:1.3; letter-spacing:-0.012em;}
+      .ts-h3{ font-size:var(--h3); line-height:1.2; letter-spacing:-0.015em;}
+      .ts-h2{ font-size:var(--h2); line-height:1.1; letter-spacing:-0.018em;}
+      .ts-h1{ font-size:var(--h1); line-height:1.0; letter-spacing:-0.02em;}
+
+      .hero { position:relative; overflow:hidden; border-radius:20px; }
+      .hero-img { position:absolute; inset:0; background-position:center; background-size:cover; transform:scale(1.02); }
+      .hero-scrim{ position:absolute; inset:0; background:linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.2)); }
+      .hero-copy{ position:relative; color:#fff; padding:32px; max-width:720px; }
+      .ar-2-1 { aspect-ratio: 2/1; }
+      .badge{ display:inline-block; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.15); color:#fff; font-size:14px; }
+
+      @media (max-width: 480px){
+        :root{ --p:16px; --h6:18px; --h5:20px; --h4:25px; --h3:31.25px; --h2:39.06px; --h1:48.83px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
