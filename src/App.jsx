@@ -1,951 +1,1251 @@
-// src/App.jsx
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-/* ================================
-   Minimal website maker (React)
-   - No hero required (falls back to gradient)
-   - Save/Load (localStorage)
-   - Export/Import JSON
-   - Export HTML (single file)
-   - Checklist v1 (name, goal, proof, contrast)
-   ================================ */
+/**
+ * CITEKS – Website Maker (Builder-first layout)
+ * - Full-screen builder panel on first load
+ * - Accordion groups to keep the UI tidy (no option overload)
+ * - Live preview below, updates instantly
+ * - Image upload for Hero + Gallery (data URLs, no backend needed)
+ * - Export static HTML (single file) for drag-and-drop Netlify deploys
+ */
 
-// ---- Utilities ----
-const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
-
-function hexToRgb(hex) {
-  const h = hex.replace("#", "").trim();
-  if (![3, 6].includes(h.length)) return [15, 23, 42]; // default slate-900
-  const norm = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
-  const r = parseInt(norm.slice(0, 2), 16);
-  const g = parseInt(norm.slice(2, 4), 16);
-  const b = parseInt(norm.slice(4, 6), 16);
-  return [r, g, b];
-}
-// WCAG contrast
-function luminance([r, g, b]) {
-  const srgb = [r, g, b].map(v => v / 255).map(v =>
-    v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
-  );
-  return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
-}
-function contrastRatio(hex1, hex2) {
-  const L1 = luminance(hexToRgb(hex1));
-  const L2 = luminance(hexToRgb(hex2));
-  const [a, b] = L1 > L2 ? [L1, L2] : [L2, L1];
-  return (a + 0.05) / (b + 0.05);
-}
-function download(name, mime, text) {
-  const blob = new Blob([text], { type: mime });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
+function cx(...c) {
+  return c.filter(Boolean).join(" ");
 }
 
-// ---- Sample ----
+const DEFAULT_BRAND = {
+  name: "Your company",
+  tagline: "One clear outcome. Everything else is noise.",
+  locations: ["Oslo", "New York", "Amsterdam"],
+  colors: { primary: "#0F172A", accent: "#0EA5E9", neutral: "#F7F7F7" },
+};
+
 const SAMPLE = {
-  company: {
+  brand: {
     name: "Harbor & Sage Law",
-    tagline: "Practical counsel for complex transactions",
+    tagline: "Practical counsel for complex transactions.",
     locations: ["Oslo", "New York", "Amsterdam"],
-    industry: "law",
-    brand: {
-      primary: "#0F172A",
-      secondary: "#F7F7F7",
-      accent: "#0EA5E9",
-      heroImage: ""
-    }
+    colors: { primary: "#0F172A", accent: "#0EA5E9", neutral: "#F7F7F7" },
   },
-  goals: { primary: "Consultation", secondary: [] },
-  differentiators: [
-    "Clear fee structures",
-    "Bench of ex-in-house lawyers",
-    "Deal-first, not theory-first"
+  hero: {
+    variant: "image", // "image" | "editorial" | "product"
+    title: "Harbor & Sage Law",
+    subtitle:
+      "Complex deals, made navigable. Transaction lawyers who speak operator.",
+    overlay: 0.4,
+    imageUrl: "", // or a data URL after upload
+    parallax: false,
+    primaryCta: "Book consultation",
+    secondaryCta: "Download brochure",
+  },
+  layout: {
+    container: 1140, // 960 | 1140 | 1280
+    radius: 16, // px
+    scale: "m", // s | m | l
+    density: "normal", // loose | normal | dense
+    headerStyle: "solid", // solid | transparent
+  },
+  animation: {
+    level: "medium", // low | medium | high
+  },
+  sections: {
+    value: true,
+    services: true,
+    proof: true,
+    pricing: true,
+    cta: true,
+    contact: true,
+    gallery: false,
+  },
+  valueItems: [
+    { title: "Clarity over clever", text: "Single goal per page. Less friction." },
+    { title: "Trust quickly", text: "Proof early: results, reviews, guarantees." },
+    { title: "Speed matters", text: "Fast loads. Tight interactions. No clutter." },
+  ],
+  services: [
+    { title: "M&A & Transactions", text: "Deal structuring and closing guidance." },
+    { title: "Commercial Contracts", text: "Clear, enforceable agreements." },
+    { title: "Data & Compliance", text: "Practical privacy & regulatory counsel." },
   ],
   proof: {
     logos: ["Aldin Capital", "Meridian Partners", "Koto Energy"],
     testimonials: [
       {
-        quote: "They guided a complex cross-border deal with clarity.",
-        author: "COO, Meridian"
-      }
+        quote:
+          "They guided a complex cross-border deal with clarity.",
+        author: "COO, Meridian",
+      },
     ],
     metrics: [
       { label: "Deals advised", value: "220" },
-      { label: "Average close time", value: "14 days" }
-    ]
+      { label: "Avg. close time", value: "14 days" },
+    ],
   },
-  pages: { mustHave: ["home", "services", "pricing", "contact"] }
-};
-
-// ---- Playbooks (deterministic) ----
-const PLAYBOOKS = {
-  law: {
-    heroKind: "editorial",
-    ctas: { primary: "Book consultation", secondary: "Download brochure" },
-    services: [
-      { title: "M&A & Transactions", text: "Structure, diligence, closing." },
-      { title: "Commercial Contracts", text: "Clear, enforceable agreements." },
-      { title: "Privacy & Compliance", text: "Practical guidance on obligations." }
-    ]
-  },
-  clinic: {
-    heroKind: "image",
-    ctas: { primary: "Book appointment", secondary: "Call clinic" },
-    services: [
-      { title: "Primary care", text: "Accessible care with fast booking." },
-      { title: "Specialists", text: "Targeted expertise and clear referrals." },
-      { title: "Diagnostics", text: "Modern equipment and gentle guidance." }
-    ]
-  },
-  gym: {
-    heroKind: "image",
-    ctas: { primary: "Start trial", secondary: "View programs" },
-    services: [
-      { title: "Elite Coaching", text: "High-intensity progress." },
-      { title: "Strength Builder", text: "Progressive overload." },
-      { title: "Conditioning Lab", text: "Cardio & mobility." }
-    ]
-  },
-  saas: {
-    heroKind: "product",
-    ctas: { primary: "Start demo", secondary: "Talk to sales" },
-    services: [
-      { title: "Onboarding flows", text: "Frictionless time-to-value." },
-      { title: "Pricing architecture", text: "Plans & entitlements that convert." },
-      { title: "Docs & SEO", text: "Content that compounds organic growth." }
-    ]
-  }
-};
-
-const DEFAULT_BRAND = {
-  primary: "#0F172A",
-  secondary: "#F7F7F7",
-  accent: "#0EA5E9",
-  heroImage: ""
-};
-
-// ---- Core generator ----
-function generateDSL(brief) {
-  const industry = brief?.company?.industry || "saas";
-  const pb = PLAYBOOKS[industry] || PLAYBOOKS.saas;
-
-  const brand = {
-    name: brief?.company?.name || "Your company",
-    tagline: brief?.company?.tagline || "",
-    colors: {
-      primary: brief?.company?.brand?.primary || DEFAULT_BRAND.primary,
-      secondary: brief?.company?.brand?.secondary || DEFAULT_BRAND.secondary,
-      accent: brief?.company?.brand?.accent || DEFAULT_BRAND.accent
+  pricing: [
+    { name: "Starter", price: "$900", items: ["2–3 pages", "Responsive", "Lead form"] },
+    {
+      name: "Growth",
+      price: "$2,300",
+      items: ["5–7 pages", "SEO + schema", "Booking & Maps", "Integrations"],
     },
-    heroImage: brief?.company?.brand?.heroImage || ""
-  };
-
-  const sections = [];
-
-  sections.push({
-    type: "hero",
-    variant: pb.heroKind,
-    title: brand.name,
-    subtitle: brand.tagline || "We make websites pay for themselves.",
-    badge: (brief?.company?.locations || []).join(" · "),
-    primaryCta: {
-      label: brief?.goals?.primary || pb.ctas.primary,
-      href: "#contact"
+    {
+      name: "Scale",
+      price: "$7,000",
+      items: ["10+ pages", "Strategy + funnel", "Advanced SEO/analytics", "CRM / e-com"],
     },
-    secondaryCta: brief?.goals?.secondary?.[0]
-      ? { label: brief.goals.secondary[0], href: "#contact" }
-      : null,
-    heroImage: brand.heroImage
-  });
-
-  const diffs = (brief?.differentiators || [])
-    .slice(0, 6)
-    .map((d) => ({ title: d, text: "Baked into our day-to-day process." }));
-  if (diffs.length) {
-    sections.push({ type: "value", title: "What you get with us", items: diffs });
-  }
-
-  const services =
-    PLAYBOOKS[industry]?.services ||
-    PLAYBOOKS.saas.services;
-  sections.push({ type: "services", title: "Services", items: services });
-
-  const proof = brief?.proof || {};
-  if (proof.logos?.length || proof.testimonials?.length || proof.metrics?.length) {
-    sections.push({
-      type: "proof",
-      logos: proof.logos || [],
-      testimonials: proof.testimonials || [],
-      metrics: proof.metrics || []
-    });
-  }
-
-  if ((brief?.pages?.mustHave || []).includes("pricing")) {
-    sections.push({
-      type: "pricing",
-      title: "Packages",
-      note: "Transparent estimates. Fixed-fee options available.",
-      tiers: [
-        { name: "Starter", price: "$900", items: ["2–3 pages", "Responsive", "Lead form"] },
-        { name: "Growth", price: "$2,300", items: ["5–7 pages", "SEO + schema", "Booking & Maps", "Integrations"] },
-        { name: "Scale", price: "$7,000", items: ["10+ pages", "Strategy + funnel", "Advanced SEO/analytics", "CRM / e-com"] }
-      ]
-    });
-  }
-
-  sections.push({
-    type: "cta",
-    title: "Ready to move faster?",
-    cta: { label: brief?.goals?.primary || pb.ctas.primary, href: "#contact" }
-  });
-
-  sections.push({
-    type: "contact",
-    title: "Contact",
+  ],
+  contact: {
     email: "contact@citeks.net",
-    locations: brief?.company?.locations || []
+  },
+  gallery: [], // {src:dataUrl, alt:string}[]
+};
+
+export default function App() {
+  const [brand, setBrand] = useState(DEFAULT_BRAND);
+  const [hero, setHero] = useState(SAMPLE.hero);
+  const [layout, setLayout] = useState(SAMPLE.layout);
+  const [animation, setAnimation] = useState(SAMPLE.animation);
+  const [sections, setSections] = useState(SAMPLE.sections);
+  const [valueItems, setValueItems] = useState(SAMPLE.valueItems);
+  const [services, setServices] = useState(SAMPLE.services);
+  const [proof, setProof] = useState(SAMPLE.proof);
+  const [pricing, setPricing] = useState(SAMPLE.pricing);
+  const [contact, setContact] = useState(SAMPLE.contact);
+  const [gallery, setGallery] = useState(SAMPLE.gallery);
+
+  const containerCss = useMemo(() => {
+    // type scale multiplier
+    const scaleMap = { s: 0.92, m: 1, l: 1.08 };
+    const mult = scaleMap[layout.scale || "m"] || 1;
+
+    // density adjusts vertical rhythm
+    const densityMap = { loose: 1.15, normal: 1, dense: 0.9 };
+    const dMult = densityMap[layout.density || "normal"] || 1;
+
+    return `
+      :root{
+        --ink:${brand.colors.primary};
+        --accent:${brand.colors.accent};
+        --bg:${brand.colors.neutral};
+        --container:${layout.container}px;
+        --radius:${layout.radius}px;
+
+        --ts-p:${16 * mult}px;
+        --ts-h6:${18 * mult}px;
+        --ts-h5:${20 * mult}px;
+        --ts-h4:${25 * mult}px;
+        --ts-h3:${31.25 * mult}px;
+        --ts-h2:${39.06 * mult}px;
+        --ts-h1:${48.83 * mult}px;
+
+        --y-gap:${12 * dMult}px;
+      }
+    `;
+  }, [brand.colors, layout]);
+
+  // builder accordions open/close
+  const [open, setOpen] = useState({
+    brand: true,
+    layout: false,
+    hero: true,
+    animation: false,
+    sections: false,
+    value: false,
+    services: false,
+    proof: false,
+    pricing: false,
+    contact: false,
+    gallery: false,
+    export: false,
   });
 
-  return { meta: { brand }, pages: [{ slug: "home", sections }] };
-}
-
-// ---- Checklist (guardrails) ----
-function useChecklist(brief) {
-  const b = brief || {};
-  const brand = b.company?.brand || DEFAULT_BRAND;
-  const textOnNeutral = contrastRatio(brand.primary, brand.secondary);
-  const btnOnAccent = contrastRatio("#FFFFFF", brand.accent); // white text on accent button
-  const proofCount =
-    (b.proof?.logos?.length || 0) +
-    (b.proof?.testimonials?.length || 0) +
-    (b.proof?.metrics?.length || 0);
-
-  const checks = [
-    {
-      key: "name",
-      label: "Company name present",
-      pass: (b.company?.name || "").trim().length >= 2
-    },
-    {
-      key: "goal",
-      label: "Primary goal selected",
-      pass: (b.goals?.primary || "").trim().length > 0
-    },
-    {
-      key: "proof",
-      label: "At least 2 proof items (logos + testimonials + metrics)",
-      pass: proofCount >= 2
-    },
-    {
-      key: "contrastBody",
-      label: "Contrast (body text vs background) ≥ 4.5:1",
-      pass: textOnNeutral >= 4.5,
-      meta: textOnNeutral.toFixed(2)
-    },
-    {
-      key: "contrastButton",
-      label: "Contrast (button text vs accent) ≥ 3:1",
-      pass: btnOnAccent >= 3,
-      meta: btnOnAccent.toFixed(2)
-    }
-  ];
-
-  const allPass = checks.every((c) => c.pass);
-  return { checks, allPass };
-}
-
-// ---- Storage helpers ----
-const STORAGE_KEY = "citeks-maker-projects";
-
-function readProjects() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
+  function toggle(name) {
+    setOpen((s) => ({ ...s, [name]: !s[name] }));
   }
-}
-function writeProjects(map) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+
+  // Update helpers
+  const updBrand = (patch) => setBrand((s) => ({ ...s, ...patch }));
+  const updBrandColor = (k, v) =>
+    setBrand((s) => ({ ...s, colors: { ...s.colors, [k]: v } }));
+  const updHero = (patch) => setHero((s) => ({ ...s, ...patch }));
+  const updLayout = (patch) => setLayout((s) => ({ ...s, ...patch }));
+  const updAnim = (patch) => setAnimation((s) => ({ ...s, ...patch }));
+  const updSections = (k) => setSections((s) => ({ ...s, [k]: !s[k] }));
+  const updProof = (patch) => setProof((s) => ({ ...s, ...patch }));
+  const updContact = (patch) => setContact((s) => ({ ...s, ...patch }));
+
+  // File upload handlers (hero + gallery)
+  async function onHeroFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = await fileToDataUrl(file);
+    updHero({ imageUrl: url });
+  }
+  async function onAddGalleryFiles(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const items = [];
+    for (const f of files) {
+      const src = await fileToDataUrl(f);
+      items.push({ src, alt: f.name });
+    }
+    setGallery((g) => [...g, ...items]);
+  }
+  function removeGalleryIndex(i) {
+    setGallery((g) => g.filter((_, idx) => idx !== i));
+  }
+
+  function loadSample() {
+    setBrand(SAMPLE.brand);
+    setHero(SAMPLE.hero);
+    setLayout(SAMPLE.layout);
+    setAnimation(SAMPLE.animation);
+    setSections(SAMPLE.sections);
+    setValueItems(SAMPLE.valueItems);
+    setServices(SAMPLE.services);
+    setProof(SAMPLE.proof);
+    setPricing(SAMPLE.pricing);
+    setContact(SAMPLE.contact);
+    setGallery(SAMPLE.gallery);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function resetAll() {
+    setBrand(DEFAULT_BRAND);
+    setHero({
+      variant: "image",
+      title: DEFAULT_BRAND.name,
+      subtitle: DEFAULT_BRAND.tagline,
+      overlay: 0.35,
+      imageUrl: "",
+      parallax: false,
+      primaryCta: "Get in touch",
+      secondaryCta: "",
+    });
+    setLayout({ container: 1140, radius: 16, scale: "m", density: "normal", headerStyle: "solid" });
+    setAnimation({ level: "medium" });
+    setSections({ value: true, services: true, proof: true, pricing: true, cta: true, contact: true, gallery: false });
+    setValueItems([
+      { title: "Clarity over clever", text: "Single goal per page. Less friction." },
+      { title: "Trust quickly", text: "Proof early: results, reviews, guarantees." },
+      { title: "Speed matters", text: "Fast loads. Tight interactions. No clutter." },
+    ]);
+    setServices([
+      { title: "Strategy & IA", text: "Define goals, sitemap, and decision pathways." },
+      { title: "Design System", text: "Reusable components with accessibility baked in." },
+      { title: "Performance & SEO", text: "Lighthouse-focused builds with schema and structure." },
+    ]);
+    setProof({ logos: [], testimonials: [], metrics: [] });
+    setPricing([
+      { name: "Starter", price: "$900", items: ["2–3 pages", "Responsive", "Lead form"] },
+      { name: "Growth", price: "$2,300", items: ["5–7 pages", "SEO + schema", "Booking & Maps", "Integrations"] },
+      { name: "Scale", price: "$7,000", items: ["10+ pages", "Strategy + funnel", "Advanced SEO/analytics", "CRM / e-com"] },
+    ]);
+    setContact({ email: "contact@citeks.net" });
+    setGallery([]);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function exportStaticHtml() {
+    const html = buildExportHtml({
+      brand,
+      hero,
+      layout,
+      animation,
+      sections,
+      valueItems,
+      services,
+      proof,
+      pricing,
+      contact,
+      gallery,
+    });
+    const blob = new Blob([html], { type: "text/html" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "index.html";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  return (
+    <div>
+      <style>{baseCss}</style>
+      <style>{containerCss}</style>
+
+      {/* ======== BUILDER (full screen on load) ======== */}
+      <section className="builder panel">
+        <header className="builder-head">
+          <div className="brand-chip">CITEKS Maker</div>
+          <div className="builder-actions">
+            <button className="btn" onClick={loadSample}>Load example</button>
+            <button className="btn sec" onClick={resetAll}>Reset</button>
+            <a className="btn ghost" href="#preview">Scroll to preview</a>
+          </div>
+        </header>
+
+        <div className="accordion-col">
+          {/* BRAND */}
+          <Accordion title="Brand & Identity" open={open.brand} onToggle={() => toggle("brand")}>
+            <div className="grid two">
+              <Labeled inputId="brandName" label="Company name">
+                <input id="brandName" className="input" value={brand.name}
+                       onChange={(e) => updBrand({ name: e.target.value })} />
+              </Labeled>
+              <Labeled inputId="brandTag" label="Tagline">
+                <input id="brandTag" className="input" value={brand.tagline}
+                       onChange={(e) => updBrand({ tagline: e.target.value })} />
+              </Labeled>
+              <Labeled inputId="brandLoc" label="Locations (comma)">
+                <input id="brandLoc" className="input"
+                       value={brand.locations.join(", ")}
+                       onChange={(e) =>
+                         updBrand({ locations: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })
+                       } />
+              </Labeled>
+            </div>
+            <div className="grid three" style={{ marginTop: "var(--y-gap)" }}>
+              <Labeled inputId="colPri" label="Primary (ink)">
+                <input id="colPri" type="color" className="input color" value={brand.colors.primary}
+                       onChange={(e) => updBrandColor("primary", e.target.value)} />
+              </Labeled>
+              <Labeled inputId="colAccent" label="Accent">
+                <input id="colAccent" type="color" className="input color" value={brand.colors.accent}
+                       onChange={(e) => updBrandColor("accent", e.target.value)} />
+              </Labeled>
+              <Labeled inputId="colNeu" label="Neutral (bg)">
+                <input id="colNeu" type="color" className="input color" value={brand.colors.neutral}
+                       onChange={(e) => updBrandColor("neutral", e.target.value)} />
+              </Labeled>
+            </div>
+          </Accordion>
+
+          {/* LAYOUT */}
+          <Accordion title="Layout & Typography" open={open.layout} onToggle={() => toggle("layout")}>
+            <div className="grid three">
+              <Labeled label="Container">
+                <Select value={layout.container} onChange={(v) => updLayout({ container: Number(v) })}
+                        options={[
+                          { value: 960, label: "960px (compact)" },
+                          { value: 1140, label: "1140px (standard)" },
+                          { value: 1280, label: "1280px (wide)" },
+                        ]} />
+              </Labeled>
+              <Labeled label="Corner radius">
+                <Select value={layout.radius} onChange={(v) => updLayout({ radius: Number(v) })}
+                        options={[
+                          { value: 8, label: "8px" },
+                          { value: 16, label: "16px" },
+                          { value: 24, label: "24px" },
+                        ]} />
+              </Labeled>
+              <Labeled label="Type scale">
+                <RadioGroup value={layout.scale}
+                            onChange={(v) => updLayout({ scale: v })}
+                            options={[
+                              { value: "s", label: "Small" },
+                              { value: "m", label: "Medium" },
+                              { value: "l", label: "Large" },
+                            ]} />
+              </Labeled>
+              <Labeled label="Density">
+                <RadioGroup value={layout.density}
+                            onChange={(v) => updLayout({ density: v })}
+                            options={[
+                              { value: "loose", label: "Loose" },
+                              { value: "normal", label: "Normal" },
+                              { value: "dense", label: "Dense" },
+                            ]} />
+              </Labeled>
+              <Labeled label="Header style">
+                <RadioGroup value={layout.headerStyle}
+                            onChange={(v) => updLayout({ headerStyle: v })}
+                            options={[
+                              { value: "solid", label: "Solid" },
+                              { value: "transparent", label: "Transparent over hero" },
+                            ]} />
+              </Labeled>
+            </div>
+          </Accordion>
+
+          {/* HERO */}
+          <Accordion title="Hero" open={open.hero} onToggle={() => toggle("hero")}>
+            <div className="grid two">
+              <Labeled label="Hero variant">
+                <RadioGroup value={hero.variant}
+                            onChange={(v) => updHero({ variant: v })}
+                            options={[
+                              { value: "image", label: "Image" },
+                              { value: "editorial", label: "Editorial" },
+                              { value: "product", label: "Product" },
+                            ]} />
+              </Labeled>
+              <Labeled label="Overlay strength">
+                <input type="range" min={0} max={0.8} step={0.05} value={hero.overlay}
+                       onChange={(e) => updHero({ overlay: Number(e.target.value) })} />
+              </Labeled>
+              <Labeled label="Title">
+                <input className="input" value={hero.title}
+                       onChange={(e) => updHero({ title: e.target.value })} />
+              </Labeled>
+              <Labeled label="Subtitle">
+                <input className="input" value={hero.subtitle}
+                       onChange={(e) => updHero({ subtitle: e.target.value })} />
+              </Labeled>
+              <Labeled label="Primary CTA">
+                <input className="input" value={hero.primaryCta}
+                       onChange={(e) => updHero({ primaryCta: e.target.value })} />
+              </Labeled>
+              <Labeled label="Secondary CTA">
+                <input className="input" value={hero.secondaryCta}
+                       onChange={(e) => updHero({ secondaryCta: e.target.value })} />
+              </Labeled>
+              <Labeled label="Hero image URL (optional)">
+                <input className="input" value={hero.imageUrl || ""}
+                       onChange={(e) => updHero({ imageUrl: e.target.value })} placeholder="https://…" />
+              </Labeled>
+              <Labeled label="Or upload hero image">
+                <input type="file" accept="image/*" onChange={onHeroFile} />
+              </Labeled>
+              <Labeled label="Parallax">
+                <RadioGroup value={hero.parallax ? "1" : "0"}
+                            onChange={(v) => updHero({ parallax: v === "1" })}
+                            options={[
+                              { value: "0", label: "Off" },
+                              { value: "1", label: "On" },
+                            ]} />
+              </Labeled>
+            </div>
+          </Accordion>
+
+          {/* ANIMATION */}
+          <Accordion title="Animation level" open={open.animation} onToggle={() => toggle("animation")}>
+            <RadioGroup
+              value={animation.level}
+              onChange={(v) => updAnim({ level: v })}
+              options={[
+                { value: "low", label: "Low (subtle fades)" },
+                { value: "medium", label: "Medium (fades + slides)" },
+                { value: "high", label: "High (parallax + motion)" },
+              ]}
+            />
+          </Accordion>
+
+          {/* SECTIONS ON/OFF */}
+          <Accordion title="Sections to include" open={open.sections} onToggle={() => toggle("sections")}>
+            <div className="grid three">
+              {Object.entries(sections).map(([k, v]) => (
+                <label key={k} className="check">
+                  <input type="checkbox" checked={v} onChange={() => updSections(k)} /> {k}
+                </label>
+              ))}
+            </div>
+          </Accordion>
+
+          {/* VALUE */}
+          <Accordion title="Value items (what the client gets)" open={open.value} onToggle={() => toggle("value")}>
+            <Repeater
+              items={valueItems}
+              onAdd={() => setValueItems((s) => [...s, { title: "", text: "" }])}
+              onChange={(idx, patch) =>
+                setValueItems((s) => s.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
+              }
+              onRemove={(idx) => setValueItems((s) => s.filter((_, i) => i !== idx))}
+            />
+          </Accordion>
+
+          {/* SERVICES */}
+          <Accordion title="Services" open={open.services} onToggle={() => toggle("services")}>
+            <Repeater
+              items={services}
+              onAdd={() => setServices((s) => [...s, { title: "", text: "" }])}
+              onChange={(idx, patch) =>
+                setServices((s) => s.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
+              }
+              onRemove={(idx) => setServices((s) => s.filter((_, i) => i !== idx))}
+            />
+          </Accordion>
+
+          {/* PROOF */}
+          <Accordion title="Proof (logos, testimonials, metrics)" open={open.proof} onToggle={() => toggle("proof")}>
+            <div className="grid two">
+              <Labeled label="Client logos (comma)">
+                <input className="input"
+                  value={(proof.logos || []).join(", ")}
+                  onChange={(e) => updProof({ logos: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} />
+              </Labeled>
+              <Labeled label="Testimonials (one per line: quote — author)">
+                <textarea className="input" rows={4}
+                  value={(proof.testimonials || []).map((t) => `${t.quote} — ${t.author || ""}`).join("\n")}
+                  onChange={(e) =>
+                    updProof({
+                      testimonials: e.target.value
+                        .split("\n")
+                        .map((ln) => {
+                          const [q, a] = ln.split("—").map((x) => x && x.trim());
+                          return q ? { quote: q, author: a || "" } : null;
+                        })
+                        .filter(Boolean),
+                    })
+                  } />
+              </Labeled>
+              <Labeled label="Metrics (one per line: Label: Value)">
+                <textarea className="input" rows={3}
+                  value={(proof.metrics || []).map((m) => `${m.label}: ${m.value}`).join("\n")}
+                  onChange={(e) =>
+                    updProof({
+                      metrics: e.target.value
+                        .split("\n")
+                        .map((ln) => {
+                          const [label, value] = ln.split(":").map((x) => x && x.trim());
+                          return label && value ? { label, value } : null;
+                        })
+                        .filter(Boolean),
+                    })
+                  } />
+              </Labeled>
+            </div>
+          </Accordion>
+
+          {/* PRICING */}
+          <Accordion title="Pricing tiers" open={open.pricing} onToggle={() => toggle("pricing")}>
+            <TierEditor tiers={pricing} onChange={setPricing} />
+          </Accordion>
+
+          {/* CONTACT */}
+          <Accordion title="Contact" open={open.contact} onToggle={() => toggle("contact")}>
+            <div className="grid two">
+              <Labeled label="Email">
+                <input className="input" value={contact.email}
+                       onChange={(e) => updContact({ email: e.target.value })} />
+              </Labeled>
+            </div>
+          </Accordion>
+
+          {/* GALLERY */}
+          <Accordion title="Gallery images" open={open.gallery} onToggle={() => toggle("gallery")}>
+            <div className="grid two">
+              <Labeled label="Add images">
+                <input type="file" accept="image/*" multiple onChange={onAddGalleryFiles} />
+              </Labeled>
+            </div>
+            {gallery.length > 0 && (
+              <div className="thumbs">
+                {gallery.map((g, i) => (
+                  <div key={i} className="thumb">
+                    <img src={g.src} alt={g.alt || `image-${i}`} />
+                    <button className="mini danger" onClick={() => removeGalleryIndex(i)}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Accordion>
+
+          {/* EXPORT */}
+          <Accordion title="Export & Deploy" open={open.export} onToggle={() => toggle("export")}>
+            <p className="tips">
+              Click <b>Export static HTML</b> to download a self-contained <code>index.html</code>.  
+              Then in Netlify: <i>Add new site → Deploy manually</i> and drag the file in.
+            </p>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button className="btn" onClick={exportStaticHtml}>Export static HTML</button>
+              <a className="btn ghost" href="#preview">Scroll to preview</a>
+            </div>
+          </Accordion>
+        </div>
+      </section>
+
+      {/* ======== PREVIEW (below builder) ======== */}
+      <section id="preview" className="preview">
+        <SitePreview
+          brand={brand}
+          hero={hero}
+          layout={layout}
+          animation={animation}
+          sections={sections}
+          valueItems={valueItems}
+          services={services}
+          proof={proof}
+          pricing={pricing}
+          contact={contact}
+          gallery={gallery}
+        />
+      </section>
+    </div>
+  );
 }
 
-// ---- UI Components ----
-function Field({ label, children }) {
+/* ---------------------- Components ---------------------- */
+
+function Accordion({ title, open, onToggle, children }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
-      <div className="ts-h6">{label}</div>
+    <div className="accordion">
+      <button className="accordion-head" onClick={onToggle} aria-expanded={open}>
+        <span>{title}</span>
+        <span className={cx("chev", open && "open")}>▾</span>
+      </button>
+      {open && <div className="accordion-body">{children}</div>}
+    </div>
+  );
+}
+
+function Labeled({ label, inputId, children }) {
+  return (
+    <label htmlFor={inputId} className="label">
+      <div className="label-text">{label}</div>
       {children}
     </label>
   );
 }
 
-function Input(props) {
+function Select({ value, onChange, options }) {
   return (
-    <input
-      {...props}
-      className="input"
-      style={{
-        width: "100%",
-        padding: "10px 12px",
-        border: "1px solid var(--hair)",
-        borderRadius: 12,
-        background: "#fff",
-      }}
-    />
-  );
-}
-function Textarea(props) {
-  return (
-    <textarea
-      {...props}
-      className="input"
-      style={{
-        width: "100%",
-        padding: "10px 12px",
-        border: "1px solid var(--hair)",
-        borderRadius: 12,
-        background: "#fff",
-        resize: "vertical"
-      }}
-    />
-  );
-}
-function Select(props) {
-  return (
-    <select
-      {...props}
-      className="input"
-      style={{
-        width: "100%",
-        padding: "10px 12px",
-        border: "1px solid var(--hair)",
-        borderRadius: 12,
-        background: "#fff"
-      }}
-    />
+    <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
-// ---- App ----
-export default function App() {
-  // form state
-  const [name, setName] = useState(SAMPLE.company.name);
-  const [tagline, setTagline] = useState(SAMPLE.company.tagline);
-  const [locations, setLocations] = useState(SAMPLE.company.locations.join(", "));
-  const [industry, setIndustry] = useState(SAMPLE.company.industry);
-  const [primary, setPrimary] = useState(SAMPLE.company.brand.primary);
-  const [secondary, setSecondary] = useState(SAMPLE.company.brand.secondary);
-  const [accent, setAccent] = useState(SAMPLE.company.brand.accent);
-  const [hero, setHero] = useState(SAMPLE.company.brand.heroImage);
-  const [goal, setGoal] = useState(SAMPLE.goals.primary);
-
-  const [diff, setDiff] = useState(SAMPLE.differentiators.join("\n"));
-  const [testi, setTesti] = useState(
-    SAMPLE.proof.testimonials.map((t) => `${t.quote} — ${t.author}`).join("\n")
-  );
-  const [logos, setLogos] = useState(SAMPLE.proof.logos.join(", "));
-  const [metrics, setMetrics] = useState(
-    SAMPLE.proof.metrics.map((m) => `${m.label}: ${m.value}`).join("\n")
-  );
-
-  // projects in storage
-  const [projectName, setProjectName] = useState("Sample – Harbor & Sage Law");
-  const [projectsMap, setProjectsMap] = useState(readProjects);
-
-  // derived brief
-  const brief = useMemo(() => {
-    const toList = (s) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : []);
-    const toLines = (s) => (s ? s.split("\n").map((x) => x.trim()).filter(Boolean) : []);
-    const testimonials = toLines(testi)
-      .map((l) => {
-        const [q, a] = l.split("—").map((x) => x && x.trim());
-        return q ? { quote: q, author: a || "" } : null;
-      })
-      .filter(Boolean);
-    const metricsList = toLines(metrics)
-      .map((l) => {
-        const [label, value] = l.split(":").map((x) => x && x.trim());
-        return label && value ? { label, value } : null;
-      })
-      .filter(Boolean);
-
-    return {
-      company: {
-        name: name || "Your company",
-        tagline,
-        locations: toList(locations),
-        industry: industry || "saas",
-        brand: { primary, secondary, accent, heroImage: hero || "" }
-      },
-      goals: { primary: goal, secondary: [] },
-      differentiators: toLines(diff),
-      proof: {
-        logos: toList(logos),
-        testimonials,
-        metrics: metricsList
-      },
-      pages: { mustHave: ["home", "services", "pricing", "contact"] }
-    };
-  }, [name, tagline, locations, industry, primary, secondary, accent, hero, goal, diff, testi, logos, metrics]);
-
-  const dsl = useMemo(() => generateDSL(brief), [brief]);
-  const { checks, allPass } = useChecklist(brief);
-
-  // actions
-  function saveProject() {
-    if (!projectName.trim()) return alert("Give this project a name first.");
-    const map = { ...readProjects(), [projectName.trim()]: brief };
-    writeProjects(map);
-    setProjectsMap(map);
-    alert("Saved.");
-  }
-  function loadProject(name) {
-    const map = readProjects();
-    const b = map[name];
-    if (!b) return;
-    setProjectName(name);
-    setName(b.company?.name || "");
-    setTagline(b.company?.tagline || "");
-    setLocations((b.company?.locations || []).join(", "));
-    setIndustry(b.company?.industry || "saas");
-    setPrimary(b.company?.brand?.primary || DEFAULT_BRAND.primary);
-    setSecondary(b.company?.brand?.secondary || DEFAULT_BRAND.secondary);
-    setAccent(b.company?.brand?.accent || DEFAULT_BRAND.accent);
-    setHero(b.company?.brand?.heroImage || "");
-    setGoal(b.goals?.primary || "Consultation");
-    setDiff((b.differentiators || []).join("\n"));
-    setTesti((b.proof?.testimonials || []).map(t => `${t.quote} — ${t.author}`).join("\n"));
-    setLogos((b.proof?.logos || []).join(", "));
-    setMetrics((b.proof?.metrics || []).map(m => `${m.label}: ${m.value}`).join("\n"));
-  }
-  function exportJSON() {
-    download(`${(projectName || "project").replace(/\s+/g, "-").toLowerCase()}.json`, "application/json", JSON.stringify(brief, null, 2));
-  }
-  function importJSON(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const b = JSON.parse(reader.result);
-        setProjectName(b.company?.name || "Imported Project");
-        setName(b.company?.name || "");
-        setTagline(b.company?.tagline || "");
-        setLocations((b.company?.locations || []).join(", "));
-        setIndustry(b.company?.industry || "saas");
-        setPrimary(b.company?.brand?.primary || DEFAULT_BRAND.primary);
-        setSecondary(b.company?.brand?.secondary || DEFAULT_BRAND.secondary);
-        setAccent(b.company?.brand?.accent || DEFAULT_BRAND.accent);
-        setHero(b.company?.brand?.heroImage || "");
-        setGoal(b.goals?.primary || "Consultation");
-        setDiff((b.differentiators || []).join("\n"));
-        setTesti((b.proof?.testimonials || []).map(t => `${t.quote} — ${t.author}`).join("\n"));
-        setLogos((b.proof?.logos || []).join(", "));
-        setMetrics((b.proof?.metrics || []).map(m => `${m.label}: ${m.value}`).join("\n"));
-      } catch {
-        alert("Invalid JSON.");
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  }
-
-  function exportHTML() {
-    const html = renderStandaloneHTML(dsl);
-    download(`${(projectName || "site").replace(/\s+/g, "-").toLowerCase()}.html`, "text/html", html);
-  }
-
-  // ---- UI ----
+function RadioGroup({ value, onChange, options }) {
   return (
-    <div style={styles.page}>
-      <style>{baseCss}</style>
+    <div className="radios">
+      {options.map((o) => (
+        <label key={o.value} className={cx("radio", value === o.value && "active")}>
+          <input
+            type="radio"
+            name={`r-${options[0].value}-${options.length}`}
+            checked={value === o.value}
+            onChange={() => onChange(o.value)}
+          />
+          {o.label}
+        </label>
+      ))}
+    </div>
+  );
+}
 
-      <aside style={styles.sidebar}>
-        <div style={styles.sectionHeader}>
-          <div className="ts-h5" style={{ fontWeight: 700 }}>CITEKS Maker</div>
-          <div className="ts-h6" style={{ color: "var(--muted)" }}>Private tool — oversiktlig & deterministic</div>
+function Repeater({ items, onAdd, onChange, onRemove }) {
+  return (
+    <div className="repeater">
+      {items.map((it, i) => (
+        <div key={i} className="panel row">
+          <input className="input" placeholder="Title" value={it.title}
+                 onChange={(e) => onChange(i, { title: e.target.value })} />
+          <input className="input" placeholder="Text" value={it.text}
+                 onChange={(e) => onChange(i, { text: e.target.value })} />
+          <button className="mini danger" onClick={() => onRemove(i)}>Remove</button>
         </div>
+      ))}
+      <button className="mini" onClick={onAdd}>+ Add item</button>
+    </div>
+  );
+}
 
-        <div className="thin" style={{ margin: "12px 0" }} />
-
-        <Field label="Project name">
-          <Input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="e.g., Harbor & Sage Law — Draft A" />
-        </Field>
-
-        <div className="thin" style={{ margin: "12px 0" }} />
-
-        <div className="ts-h6" style={{ fontWeight: 600, marginBottom: 4 }}>Company</div>
-        <div style={styles.grid2}>
-          <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your company" /></Field>
-          <Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="Short promise" /></Field>
+function TierEditor({ tiers, onChange }) {
+  function update(idx, patch) {
+    onChange(tiers.map((t, i) => (i === idx ? { ...t, ...patch } : t)));
+  }
+  function remove(idx) {
+    onChange(tiers.filter((_, i) => i !== idx));
+  }
+  return (
+    <div className="repeater">
+      {tiers.map((t, i) => (
+        <div key={i} className="panel row">
+          <input className="input" placeholder="Name" value={t.name}
+                 onChange={(e) => update(i, { name: e.target.value })} />
+          <input className="input" placeholder="Price" value={t.price}
+                 onChange={(e) => update(i, { price: e.target.value })} />
+          <input className="input" placeholder="Comma features"
+                 value={(t.items || []).join(", ")}
+                 onChange={(e) =>
+                   update(i, { items: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })
+                 } />
+          <button className="mini danger" onClick={() => remove(i)}>Remove</button>
         </div>
-        <Field label="Locations (comma)"><Input value={locations} onChange={(e) => setLocations(e.target.value)} placeholder="Oslo, New York, Amsterdam" /></Field>
-        <div style={styles.grid2}>
-          <Field label="Industry">
-            <Select value={industry} onChange={(e) => setIndustry(e.target.value)}>
-              <option value="law">Law</option>
-              <option value="clinic">Clinic</option>
-              <option value="gym">Gym</option>
-              <option value="saas">SaaS</option>
-            </Select>
-          </Field>
-          <Field label="Primary goal">
-            <Select value={goal} onChange={(e) => setGoal(e.target.value)}>
-              <option>Consultation</option>
-              <option>Book appointment</option>
-              <option>Start demo</option>
-              <option>Get quote</option>
-            </Select>
-          </Field>
+      ))}
+      <button className="mini" onClick={() => onChange([...tiers, { name: "", price: "", items: [] }])}>
+        + Add tier
+      </button>
+    </div>
+  );
+}
+
+/* ---------------------- Preview ---------------------- */
+
+function SitePreview({
+  brand,
+  hero,
+  layout,
+  animation,
+  sections,
+  valueItems,
+  services,
+  proof,
+  pricing,
+  contact,
+  gallery,
+}) {
+  // animation settings
+  const anim = useMemo(() => {
+    if (animation.level === "high") return { y: 20, dur: 600, obs: 0.15, parallax: hero.parallax };
+    if (animation.level === "low") return { y: 8, dur: 350, obs: 0.35, parallax: false };
+    return { y: 12, dur: 450, obs: 0.25, parallax: hero.parallax };
+  }, [animation.level, hero.parallax]);
+
+  // observe for reveal
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add("visible")),
+      { threshold: 0.2 }
+    );
+    document.querySelectorAll(".reveal").forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [brand, hero, layout, sections, valueItems, services, proof, pricing, gallery]);
+
+  return (
+    <div className="site-root" style={{ background: "var(--bg)" }}>
+      <div className={cx("site-header", layout.headerStyle === "transparent" && "transparent")}>
+        <div className="container head-inner">
+          <div className="logo">{brand.name}</div>
+          <nav>
+            <a href="#work">Work</a>
+            <a href="#services">Services</a>
+            <a href="#contact" className="btn sm">Contact</a>
+          </nav>
         </div>
+      </div>
 
-        <div className="thin" style={{ margin: "12px 0" }} />
+      <HeroBlock brand={brand} hero={hero} anim={anim} />
 
-        <div className="ts-h6" style={{ fontWeight: 600, marginBottom: 4 }}>Brand</div>
-        <div style={styles.grid3}>
-          <Field label="Primary"><Input value={primary} onChange={(e) => setPrimary(e.target.value)} placeholder="#0F172A" /></Field>
-          <Field label="Accent"><Input value={accent} onChange={(e) => setAccent(e.target.value)} placeholder="#0EA5E9" /></Field>
-          <Field label="Neutral (bg)"><Input value={secondary} onChange={(e) => setSecondary(e.target.value)} placeholder="#F7F7F7" /></Field>
+      <main>
+        <div className="container">
+          {sections.value && <CardsGrid title="What you get with us" items={valueItems} anim={anim} />}
+          {sections.services && (
+            <CardsGrid title="Services" items={services} id="services" anim={anim} />
+          )}
+          {sections.proof && <ProofBlock proof={proof} anim={anim} />}
+          {sections.gallery && gallery.length > 0 && <GalleryBlock gallery={gallery} anim={anim} />}
+          {sections.pricing && <PricingBlock tiers={pricing} anim={anim} />}
+          {sections.cta && <CtaBlock label={hero.primaryCta || "Get in touch"} anim={anim} />}
+          {sections.contact && <ContactBlock email={contact.email} locations={brand.locations} anim={anim} />}
         </div>
-        <Field label="Hero image URL (optional)">
-          <Input value={hero} onChange={(e) => setHero(e.target.value)} placeholder="https://…/image.jpg or /images/file.jpg" />
-        </Field>
-
-        <div className="thin" style={{ margin: "12px 0" }} />
-
-        <div className="ts-h6" style={{ fontWeight: 600, marginBottom: 4 }}>Value & Proof</div>
-        <Field label="Differentiators (one per line)"><Textarea rows={3} value={diff} onChange={(e) => setDiff(e.target.value)} /></Field>
-        <Field label="Testimonials (quote — author, one per line)"><Textarea rows={3} value={testi} onChange={(e) => setTesti(e.target.value)} /></Field>
-        <div style={styles.grid2}>
-          <Field label="Client logos (comma)"><Input value={logos} onChange={(e) => setLogos(e.target.value)} /></Field>
-          <Field label="Metrics (Label: Value, one per line)"><Textarea rows={3} value={metrics} onChange={(e) => setMetrics(e.target.value)} /></Field>
-        </div>
-
-        <div className="thin" style={{ margin: "12px 0" }} />
-
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <button className="btn" onClick={saveProject}>Save</button>
-          <select
-            className="input"
-            style={{ width: 220 }}
-            onChange={(e) => e.target.value && loadProject(e.target.value)}
-            defaultValue=""
-          >
-            <option value="" disabled>Load saved project…</option>
-            {Object.keys(projectsMap).map((k) => (
-              <option key={k} value={k}>{k}</option>
-            ))}
-          </select>
-          <button className="btn sec" onClick={exportJSON}>Export JSON</button>
-          <label className="btn sec" style={{ cursor: "pointer" }}>
-            Import JSON
-            <input type="file" accept=".json,application/json" onChange={importJSON} style={{ display: "none" }} />
-          </label>
-          <button className="btn" onClick={exportHTML}>Export HTML</button>
-        </div>
-
-        <div className="thin" style={{ margin: "12px 0" }} />
-
-        <Checklist checks={checks} />
-      </aside>
-
-      <main style={styles.preview}>
-        <Header brand={dsl.meta.brand} />
-        {dsl.pages[0].sections.map((s, idx) => (
-          <Section key={idx} s={s} brand={dsl.meta.brand} />
-        ))}
-        <Footer brand={dsl.meta.brand} />
       </main>
+
+      <footer>
+        <div className="container foot">
+          <div>© {new Date().getFullYear()} {brand.name}</div>
+          <div className="muted">{brand.locations.join(" · ")}</div>
+        </div>
+      </footer>
     </div>
   );
 }
 
-// ---- Presentational ----
-function Header({ brand }) {
+function HeroBlock({ brand, hero, anim }) {
+  // parallax effect (optional)
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!anim.parallax) return;
+    const el = ref.current;
+    if (!el) return;
+    function onScroll() {
+      const y = window.scrollY * 0.25;
+      el.style.transform = `translate3d(0, ${y}px, 0) scale(1.02)`;
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [anim.parallax]);
+
+  const hasImg = !!hero.imageUrl;
+  const overlay = Math.min(Math.max(hero.overlay ?? 0.35, 0), 0.8);
+
   return (
-    <header className="panel site" style={styles.header}>
-      <div className="ts-h6" style={{ fontWeight: 600 }}>{brand.name}</div>
-      <nav className="ts-h6">
-        <a href="#services">Services</a>
-        <a href="#pricing" style={{ marginLeft: 16 }}>Pricing</a>
-        <a href="#contact" style={{ marginLeft: 16 }}>Contact</a>
-      </nav>
-    </header>
+    <section className="hero-block" style={{ borderRadius: "var(--radius)" }}>
+      <div
+        ref={ref}
+        className={cx("hero-bg", hasImg ? "with-img" : "with-grad")}
+        style={{
+          backgroundImage: hasImg
+            ? `url(${hero.imageUrl})`
+            : `linear-gradient(120deg, ${brand.colors.primary}, ${brand.colors.accent})`,
+          opacity: 1,
+        }}
+      />
+      <div className="hero-scrim" style={{ background: `rgba(0,0,0,${overlay})` }} />
+      <div className={cx("hero-inner", "reveal")} style={{ "--y": `${anim.y}px`, "--dur": `${anim.dur}ms` }}>
+        <div className="badge">{brand.locations.join(" · ")}</div>
+        <h1 className="ts-h1">{hero.title || brand.name}</h1>
+        <p className="ts-h6 sub">{hero.subtitle || brand.tagline}</p>
+        <div className="cta-row">
+          {hero.primaryCta && <a href="#contact" className="btn">{hero.primaryCta}</a>}
+          {hero.secondaryCta && <a href="#work" className="btn sec">{hero.secondaryCta}</a>}
+        </div>
+      </div>
+    </section>
   );
 }
 
-function Footer({ brand }) {
+function CardsGrid({ title, items, id, anim }) {
   return (
-    <footer className="panel site" style={styles.footer}>
-      <div className="ts-h6 tips">© {new Date().getFullYear()} {brand.name}</div>
-    </footer>
-  );
-}
-
-function Section({ s, brand }) {
-  if (s.type === "hero") {
-    return (
-      <section className="hero ar-2-1 reveal" style={{ ...styles.card, padding: 0, position: "relative", overflow: "hidden" }}>
-        <div
-          className="hero-img"
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: s.heroImage
-              ? `url(${s.heroImage}) center/cover no-repeat`
-              : `linear-gradient(120deg, ${brand.colors.primary}, ${brand.colors.accent})`,
-            transform: "scale(1.02)"
-          }}
-        />
-        <div className="hero-scrim" style={styles.scrim} />
-        <div className="hero-copy" style={{ position: "relative", color: "#fff", padding: 24, maxWidth: 720 }}>
-          {s.badge ? <div className="badge">{s.badge}</div> : null}
-          <h1 className="ts-h1" style={{ fontWeight: 700, marginTop: 8 }}>{s.title}</h1>
-          <p className="ts-h6" style={{ marginTop: 8, color: "rgba(255,255,255,.88)" }}>{s.subtitle}</p>
-          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-            {s.primaryCta ? <a className="btn" href={s.primaryCta.href}>{s.primaryCta.label}</a> : null}
-            {s.secondaryCta ? <a className="btn sec" href={s.secondaryCta.href}>{s.secondaryCta.label}</a> : null}
+    <section id={id} className="section">
+      <h2 className="ts-h2">{title}</h2>
+      <div className="grid three">
+        {items.map((it, i) => (
+          <div key={i} className="panel reveal" style={{ "--y": "12px", "--dur": "420ms" }}>
+            <div className="ts-h5" style={{ fontWeight: 600 }}>{it.title || "Untitled"}</div>
+            <div className="ts-h6 muted" style={{ marginTop: 4 }}>{it.text || ""}</div>
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (["value", "services"].includes(s.type)) {
-    return (
-      <section id={s.type === "services" ? "services" : undefined} className="panel reveal" style={styles.card}>
-        <h2 className="ts-h2" style={{ fontWeight: 700 }}>{s.title}</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", marginTop: 12 }}>
-          {(s.items || []).map((it, i) => (
-            <div key={i} className="panel" style={{ ...styles.card, padding: 16 }}>
-              <div className="ts-h5" style={{ fontWeight: 600 }}>{it.title}</div>
-              <div className="ts-h6" style={{ color: "var(--muted)", marginTop: 4 }}>{it.text}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  if (s.type === "proof") {
-    return (
-      <section className="panel reveal" style={styles.card}>
-        <h2 className="ts-h2" style={{ fontWeight: 700 }}>Proof</h2>
-        {!!s.logos?.length && (
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", marginTop: 12 }}>
-            {s.logos.map((l, i) => <div key={i} className="logo-chip">{l}</div>)}
-          </div>
-        )}
-        {!!s.testimonials?.length && (
-          <>
-            <div className="thin" style={{ margin: "12px 0" }} />
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-              {s.testimonials.map((t, i) => (
-                <div key={i} className="panel" style={{ ...styles.card, padding: 16 }}>
-                  <div className="ts-h6" style={{ fontStyle: "italic" }}>“{t.quote}”</div>
-                  <div className="ts-h6" style={{ marginTop: 8, color: "var(--muted)" }}>{t.author}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-        {!!s.metrics?.length && (
-          <>
-            <div className="thin" style={{ margin: "12px 0" }} />
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-              {s.metrics.map((m, i) => (
-                <div key={i} className="panel" style={{ ...styles.card, padding: 16 }}>
-                  <div className="ts-h3" style={{ color: "var(--accent)", fontWeight: 700 }}>{m.value}</div>
-                  <div className="ts-h6" style={{ color: "var(--muted)" }}>{m.label}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-    );
-  }
-
-  if (s.type === "pricing") {
-    return (
-      <section id="pricing" className="panel reveal" style={styles.card}>
-        <h2 className="ts-h2" style={{ fontWeight: 700 }}>{s.title}</h2>
-        <p className="ts-h6" style={{ color: "var(--muted)" }}>{s.note}</p>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", marginTop: 12 }}>
-          {s.tiers.map((t, i) => (
-            <div key={i} className="panel" style={{ ...styles.card, padding: 16 }}>
-              <div className="ts-h5" style={{ fontWeight: 600 }}>{t.name}</div>
-              <div className="ts-h3" style={{ color: "var(--accent)", fontWeight: 700, marginTop: 4 }}>{t.price}</div>
-              <ul className="ts-h6" style={{ marginTop: 8, color: "var(--muted)" }}>
-                {t.items.map((x, j) => <li key={j} style={{ marginTop: 4 }}>• {x}</li>)}
-              </ul>
-              <a className="btn" href="#contact" style={{ marginTop: 12 }}>Choose {t.name}</a>
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  if (s.type === "cta") {
-    return (
-      <section className="panel reveal" style={{ ...styles.card, textAlign: "center" }}>
-        <h2 className="ts-h2" style={{ fontWeight: 700 }}>{s.title}</h2>
-        <a className="btn" href={s.cta.href} style={{ marginTop: 12 }}>{s.cta.label}</a>
-      </section>
-    );
-  }
-
-  if (s.type === "contact") {
-    return (
-      <section id="contact" className="panel reveal" style={styles.card}>
-        <h2 className="ts-h2" style={{ fontWeight: 700 }}>{s.title}</h2>
-        <div className="ts-h6" style={{ marginTop: 8 }}>
-          Email: <a href="mailto:contact@citeks.net" style={{ color: "var(--accent)" }}>contact@citeks.net</a>
-        </div>
-        {!!s.locations?.length && (
-          <div className="ts-h6" style={{ marginTop: 4, color: "var(--muted)" }}>
-            Locations: {s.locations.join(" · ")}
-          </div>
-        )}
-        <form className="panel" style={{ ...styles.card, padding: 16, marginTop: 12, display: "grid", gap: 12 }}>
-          <Input placeholder="Name" />
-          <Input placeholder="Email" />
-          <Textarea rows={5} placeholder="Message" />
-          <button className="btn" type="button">Send</button>
-        </form>
-      </section>
-    );
-  }
-
-  return null;
-}
-
-function Checklist({ checks }) {
-  return (
-    <div className="panel" style={{ ...styles.card, padding: 12 }}>
-      <div className="ts-h6" style={{ fontWeight: 700, marginBottom: 6 }}>Checklist</div>
-      <ul className="ts-h6" style={{ margin: 0, paddingLeft: 18 }}>
-        {checks.map((c) => (
-          <li key={c.key} style={{ marginTop: 6 }}>
-            <span style={{ color: c.pass ? "green" : "crimson", fontWeight: 600 }}>
-              {c.pass ? "✓" : "•"}
-            </span>{" "}
-            {c.label}
-            {"meta" in c ? <span style={{ color: "var(--muted)" }}> — {c.meta}</span> : null}
-          </li>
         ))}
-      </ul>
-    </div>
+      </div>
+    </section>
   );
 }
 
-// ---- Export: standalone HTML ----
-function renderStandaloneHTML(dsl) {
-  // Keep it simple: inline same CSS and minimal JS for reveal
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${escapeHtml(dsl.meta.brand.name)}</title>
-<style>${baseCss}</style>
-</head>
-<body>
-<header class="panel site" style="padding:12px 16px; display:flex; align-items:center; justify-content:space-between; border-radius:16px;">
-  <div class="ts-h6" style="font-weight:600">${escapeHtml(dsl.meta.brand.name)}</div>
-  <nav class="ts-h6"><a href="#services">Services</a><a href="#pricing" style="margin-left:16px">Pricing</a><a href="#contact" style="margin-left:16px">Contact</a></nav>
-</header>
-<main id="app"></main>
-<footer class="panel site" style="padding:16px; border-radius:16px; margin-top:16px">
-  <div class="ts-h6 tips">© ${new Date().getFullYear()} ${escapeHtml(dsl.meta.brand.name)}</div>
-</footer>
-<script>
-${escapeJs(`
-  const app = document.getElementById('app');
-  const brand = ${JSON.stringify(dsl.meta.brand)};
-  const sections = ${JSON.stringify(dsl.pages[0].sections)};
-
-  const styles = {
-    card: "background:#fff; border:1px solid var(--hair); border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.04); padding:16px;",
-    scrim: "position:absolute;inset:0;background:linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.25))"
-  };
-  document.documentElement.style.setProperty('--ink', brand.colors.primary);
-  document.documentElement.style.setProperty('--accent', brand.colors.accent);
-  document.documentElement.style.setProperty('--bg', brand.colors.secondary);
-
-  function sectionEl(s){
-    const wrap = document.createElement('section');
-    wrap.className = 'panel reveal';
-    wrap.style = styles.card;
-    if (s.type==='hero'){
-      wrap.className = 'hero ar-2-1 reveal';
-      wrap.style = styles.card + ';position:relative;overflow:hidden;padding:0';
-      const bg = document.createElement('div');
-      bg.style = "position:absolute;inset:0;background:" + (s.heroImage ? \`url(\${s.heroImage}) center/cover no-repeat\` : \`linear-gradient(120deg, \${brand.colors.primary}, \${brand.colors.accent})\`) + ";transform:scale(1.02)";
-      const scr = document.createElement('div'); scr.style = styles.scrim;
-      const copy = document.createElement('div'); copy.style = "position:relative;color:#fff;padding:24px;max-width:720px";
-      if (s.badge){ const b=document.createElement('div'); b.className='badge'; b.textContent=s.badge; copy.appendChild(b); }
-      const h1 = document.createElement('h1'); h1.className='ts-h1'; h1.style='font-weight:700;margin-top:8px'; h1.textContent=s.title;
-      const p = document.createElement('p'); p.className='ts-h6'; p.style='margin-top:8px;color:rgba(255,255,255,.88)'; p.textContent=s.subtitle;
-      const ctas = document.createElement('div'); ctas.style='display:flex;gap:12px;margin-top:16px';
-      if(s.primaryCta){ const a=document.createElement('a'); a.className='btn'; a.href=s.primaryCta.href; a.textContent=s.primaryCta.label; ctas.appendChild(a); }
-      if(s.secondaryCta){ const a=document.createElement('a'); a.className='btn sec'; a.href=s.secondaryCta.href; a.textContent=s.secondaryCta.label; ctas.appendChild(a); }
-      copy.append(h1,p,ctas);
-      wrap.append(bg,scr,copy);
-      return wrap;
-    }
-    if (s.type==='value' || s.type==='services'){
-      const h2 = document.createElement('h2'); h2.className='ts-h2'; h2.style='font-weight:700'; h2.textContent=s.title;
-      const grid = document.createElement('div'); grid.style='display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:12px';
-      (s.items||[]).forEach(it=>{
-        const card=document.createElement('div'); card.style=styles.card;
-        const t=document.createElement('div'); t.className='ts-h5'; t.style='font-weight:600'; t.textContent=it.title;
-        const tx=document.createElement('div'); tx.className='ts-h6'; tx.style='color:var(--muted);margin-top:4px'; tx.textContent=it.text;
-        card.append(t,tx); grid.appendChild(card);
-      });
-      wrap.append(h2,grid); return wrap;
-    }
-    if (s.type==='proof'){
-      const h2=document.createElement('h2'); h2.className='ts-h2'; h2.style='font-weight:700'; h2.textContent='Proof';
-      wrap.append(h2);
-      if ((s.logos||[]).length){
-        const logos=document.createElement('div'); logos.style='display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-top:12px';
-        s.logos.forEach(l=>{ const chip=document.createElement('div'); chip.className='logo-chip'; chip.textContent=l; logos.appendChild(chip); });
-        wrap.append(logos);
-      }
-      if ((s.testimonials||[]).length){
-        const sep=document.createElement('div'); sep.className='thin'; sep.style='margin:12px 0'; wrap.append(sep);
-        const grid=document.createElement('div'); grid.style='display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))';
-        s.testimonials.forEach(t=>{ const card=document.createElement('div'); card.style=styles.card;
-          const q=document.createElement('div'); q.className='ts-h6'; q.style='font-style:italic'; q.textContent='“'+t.quote+'”';
-          const a=document.createElement('div'); a.className='ts-h6'; a.style='margin-top:8px;color:var(--muted)'; a.textContent=t.author||'';
-          card.append(q,a); grid.appendChild(card);
-        });
-        wrap.append(grid);
-      }
-      if ((s.metrics||[]).length){
-        const sep2=document.createElement('div'); sep2.className='thin'; sep2.style='margin:12px 0'; wrap.append(sep2);
-        const grid2=document.createElement('div'); grid2.style='display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))';
-        s.metrics.forEach(m=>{ const card=document.createElement('div'); card.style=styles.card;
-          const v=document.createElement('div'); v.className='ts-h3'; v.style='color:var(--accent);font-weight:700'; v.textContent=m.value;
-          const lb=document.createElement('div'); lb.className='ts-h6'; lb.style='color:var(--muted)'; lb.textContent=m.label;
-          card.append(v,lb); grid2.appendChild(card);
-        });
-        wrap.append(grid2);
-      }
-      return wrap;
-    }
-    if (s.type==='pricing'){
-      const h2=document.createElement('h2'); h2.className='ts-h2'; h2.style='font-weight:700'; h2.textContent=s.title;
-      const note=document.createElement('p'); note.className='ts-h6'; note.style='color:var(--muted)'; note.textContent=s.note||'';
-      const grid=document.createElement('div'); grid.style='display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:12px';
-      s.tiers.forEach(t=>{ const card=document.createElement('div'); card.style=styles.card;
-        const nm=document.createElement('div'); nm.className='ts-h5'; nm.style='font-weight:600'; nm.textContent=t.name;
-        const pr=document.createElement('div'); pr.className='ts-h3'; pr.style='color:var(--accent);font-weight:700;margin-top:4px'; pr.textContent=t.price;
-        const ul=document.createElement('ul'); ul.className='ts-h6'; ul.style='margin-top:8px;color:var(--muted)';
-        t.items.forEach(x=>{ const li=document.createElement('li'); li.style='margin-top:4px'; li.textContent='• '+x; ul.appendChild(li); });
-        const a=document.createElement('a'); a.className='btn'; a.href='#contact'; a.style='margin-top:12px'; a.textContent='Choose '+t.name;
-        card.append(nm,pr,ul,a); grid.appendChild(card);
-      });
-      wrap.append(h2,note,grid); return wrap;
-    }
-    if (s.type==='cta'){
-      const h2=document.createElement('h2'); h2.className='ts-h2'; h2.style='font-weight:700'; h2.textContent=s.title;
-      const a=document.createElement('a'); a.className='btn'; a.href=s.cta.href; a.style='margin-top:12px'; a.textContent=s.cta.label;
-      wrap.style.textAlign='center'; wrap.append(h2,a); return wrap;
-    }
-    if (s.type==='contact'){
-      const h2=document.createElement('h2'); h2.className='ts-h2'; h2.style='font-weight:700'; h2.textContent=s.title;
-      const em=document.createElement('div'); em.className='ts-h6'; em.style='margin-top:8px'; em.innerHTML='Email: <a href="mailto:contact@citeks.net" style="color:var(--accent)">contact@citeks.net</a>';
-      const wrap2=document.createElement('div'); wrap2.append(h2,em);
-      if ((s.locations||[]).length){ const loc=document.createElement('div'); loc.className='ts-h6'; loc.style='margin-top:4px;color:var(--muted)'; loc.textContent='Locations: '+s.locations.join(' · '); wrap2.append(loc); }
-      const form=document.createElement('form'); form.className='panel'; form.style='${styles.card};padding:16px;margin-top:12px;display:grid;gap:12px';
-      form.innerHTML='<input class="input" placeholder="Name"/><input class="input" placeholder="Email"/><textarea rows="5" class="input" placeholder="Message"></textarea><button class="btn" type="button">Send</button>';
-      wrap.append(wrap2); wrap.append(form); return wrap;
-    }
-    return wrap;
-  }
-
-  sections.forEach(s => app.appendChild(sectionEl(s)));
-
-  const obs=new IntersectionObserver((entries)=>{
-    entries.forEach(e=>{ if(e.isIntersecting) e.target.classList.add('visible'); });
-  },{threshold:0.25});
-  document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
-`)}</script>
-</body>
-</html>`;
+function ProofBlock({ proof, anim }) {
+  return (
+    <section className="section">
+      <h2 className="ts-h2">Proof</h2>
+      {proof.logos?.length > 0 && (
+        <div className="logo-row">
+          {proof.logos.map((l, i) => (
+            <div key={i} className="chip">{l}</div>
+          ))}
+        </div>
+      )}
+      {proof.testimonials?.length > 0 && (
+        <div className="grid two" style={{ marginTop: "var(--y-gap)" }}>
+          {proof.testimonials.map((t, i) => (
+            <div key={i} className="panel reveal">
+              <div className="ts-h6" style={{ fontStyle: "italic" }}>“{t.quote}”</div>
+              <div className="ts-h6 muted" style={{ marginTop: 8 }}>{t.author}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {proof.metrics?.length > 0 && (
+        <div className="grid three" style={{ marginTop: "var(--y-gap)" }}>
+          {proof.metrics.map((m, i) => (
+            <div key={i} className="panel stat reveal">
+              <div className="ts-h3 accent">{m.value}</div>
+              <div className="ts-h6 muted">{m.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
-function escapeJs(s) {
-  return s.replace(/<\/script>/gi, "<\\/script>");
+function GalleryBlock({ gallery }) {
+  return (
+    <section className="section">
+      <h2 className="ts-h2">Gallery</h2>
+      <div className="grid three">
+        {gallery.map((g, i) => (
+          <div key={i} className="panel imgp">
+            <img src={g.src} alt={g.alt || `img-${i}`} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
-// ---- Styles ----
+function PricingBlock({ tiers }) {
+  return (
+    <section className="section">
+      <h2 className="ts-h2">Pricing</h2>
+      <div className="grid three">
+        {tiers.map((t, i) => (
+          <div key={i} className="panel">
+            <div className="ts-h5" style={{ fontWeight: 600 }}>{t.name}</div>
+            <div className="ts-h3 accent" style={{ marginTop: 4 }}>{t.price}</div>
+            <ul className="ts-h6 muted" style={{ marginTop: 8 }}>
+              {(t.items || []).map((x, j) => <li key={j}>• {x}</li>)}
+            </ul>
+            <a href="#contact" className="btn" style={{ marginTop: 12 }}>Choose {t.name}</a>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CtaBlock({ label }) {
+  return (
+    <section className="section center">
+      <h2 className="ts-h2">Ready to move faster?</h2>
+      <a href="#contact" className="btn" style={{ marginTop: 12 }}>{label}</a>
+    </section>
+  );
+}
+
+function ContactBlock({ email, locations }) {
+  return (
+    <section className="section" id="contact">
+      <h2 className="ts-h2">Contact</h2>
+      <div className="panel">
+        <div className="ts-h6">Email: <a className="accent" href={`mailto:${email}`}>{email}</a></div>
+        {locations?.length > 0 && (
+          <div className="ts-h6 muted" style={{ marginTop: 4 }}>
+            Locations: {locations.join(" · ")}
+          </div>
+        )}
+        <form className="grid two" style={{ marginTop: "var(--y-gap)" }} onSubmit={(e) => e.preventDefault()}>
+          <input className="input" placeholder="Name" />
+          <input className="input" placeholder="Email" />
+          <textarea className="input" rows={5} placeholder="Message" />
+          <button className="btn" style={{ width: "fit-content" }}>Send</button>
+        </form>
+      </div>
+    </section>
+  );
+}
+
+/* ---------------------- Utils & CSS ---------------------- */
+
+function fileToDataUrl(file) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onerror = rej;
+    fr.onload = () => res(fr.result);
+    fr.readAsDataURL(file);
+  });
+}
+
 const baseCss = `
-:root{
-  --bg:#f7f7f7; --panel:#ffffff; --ink:#0f172a; --muted:#475569; --hair:#e5e7eb; --accent:#0ea5e9;
-  --p:16px; --h6:18px; --h5:20px; --h4:25px; --h3:31.25px; --h2:39.06px; --h1:48.83px;
-}
+/* Reset-ish */
 *{box-sizing:border-box}
 html,body,#root{height:100%}
-body{background:var(--bg); color:var(--ink); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
-.panel{background:#fff; border:1px solid var(--hair); border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.04)}
-.btn{display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:#fff; padding:10px 14px; border-radius:999px; text-decoration:none; border:none; cursor:pointer}
-.btn.sec{background:#0f172a;}
-.ts-p{font-size:var(--p); line-height:1.5}
-.ts-h6{font-size:var(--h6); line-height:1.3; letter-spacing:-0.005em}
-.ts-h5{font-size:var(--h5); line-height:1.3; letter-spacing:-0.01em}
-.ts-h4{font-size:var(--h4); line-height:1.3; letter-spacing:-0.012em}
-.ts-h3{font-size:var(--h3); line-height:1.2; letter-spacing:-0.015em}
-.ts-h2{font-size:var(--h2); line-height:1.1; letter-spacing:-0.018em}
-.ts-h1{font-size:var(--h1); line-height:1.0; letter-spacing:-0.02em}
-.thin{border-top:1px solid var(--hair)}
-.hero{position:relative; overflow:hidden; border-radius:16px}
-.ar-2-1{aspect-ratio:2/1}
-.hero-scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.25))}
-.reveal{opacity:0; transform:translateY(12px); transition:opacity .45s ease, transform .45s ease}
+body{margin:0; font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial; color:var(--ink); background:var(--bg)}
+
+/* Type scale */
+.ts-p{font-size:var(--ts-p); line-height:1.5}
+.ts-h6{font-size:var(--ts-h6); line-height:1.3; letter-spacing:-.005em}
+.ts-h5{font-size:var(--ts-h5); line-height:1.3; letter-spacing:-.01em}
+.ts-h4{font-size:var(--ts-h4); line-height:1.3; letter-spacing:-.012em}
+.ts-h3{font-size:var(--ts-h3); line-height:1.2; letter-spacing:-.015em}
+.ts-h2{font-size:var(--ts-h2); line-height:1.1; letter-spacing:-.018em}
+.ts-h1{font-size:var(--ts-h1); line-height:1.0; letter-spacing:-.02em}
+
+/* UI atoms */
+.panel{background:#fff; border:1px solid #e5e7eb; border-radius:var(--radius); box-shadow:0 8px 24px rgba(0,0,0,.04)}
+.input{background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:10px 12px; width:100%}
+.input.color{height:40px; padding:0}
+.btn{display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:#fff; border:none; border-radius:999px; padding:10px 14px; cursor:pointer; text-decoration:none}
+.btn.sec{background:var(--ink); color:#fff}
+.btn.ghost{background:transparent; color:var(--ink); border:1px solid #e5e7eb}
+.btn.sm{padding:8px 12px; font-size:14px}
+.muted{color:#64748b}
+.accent{color:var(--accent)}
+.label{display:flex; flex-direction:column; gap:6px}
+.label-text{font-size:14px; color:#475569}
+.grid{display:grid; gap:var(--y-gap)}
+.grid.two{grid-template-columns:repeat(2, minmax(0,1fr))}
+.grid.three{grid-template-columns:repeat(3, minmax(0,1fr))}
+@media (max-width: 900px){ .grid.two, .grid.three{grid-template-columns:1fr} }
+
+/* Builder */
+.builder{max-width:1200px; margin:0 auto; padding:16px; min-height:100vh}
+.builder-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px}
+.brand-chip{font-weight:700}
+.builder-actions{display:flex; gap:8px; flex-wrap:wrap}
+.accordion-col{display:grid; gap:12px}
+.accordion{border:1px solid #e5e7eb; border-radius:var(--radius); overflow:hidden; background:#fff}
+.accordion-head{width:100%; text-align:left; padding:12px 14px; display:flex; align-items:center; justify-content:space-between; background:#fff; border:none; cursor:pointer}
+.accordion-body{padding:12px 14px}
+.chev{transform:rotate(-90deg); transition:transform .2s ease}
+.chev.open{transform:rotate(0deg)}
+.radio{display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid #e5e7eb; border-radius:999px; cursor:pointer}
+.radio.active{border-color:var(--accent)}
+.radios{display:flex; gap:8px; flex-wrap:wrap}
+.repeater .row{display:grid; grid-template-columns:1fr 2fr auto; gap:8px; padding:12px}
+.repeater .mini{border:1px solid #e5e7eb; background:#fff; border-radius:999px; padding:8px 10px; cursor:pointer}
+.repeater .mini.danger{border-color:#fecaca; color:#b91c1c}
+
+/* Preview shell */
+.preview{padding:16px 16px 48px}
+.site-root .container{max-width:var(--container); margin:0 auto; padding:0 16px}
+.site-header{position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid #e5e7eb}
+.site-header.transparent{background:transparent; border-bottom-color:transparent; position:absolute; width:100%}
+.head-inner{display:flex; align-items:center; justify-content:space-between; padding:12px 0}
+.logo{font-weight:700}
+.site-header nav{display:flex; gap:12px; align-items:center}
+.site-header nav a{color:inherit; text-decoration:none}
+
+/* Hero */
+.hero-block{position:relative; height:56vh; min-height:380px; overflow:hidden; margin:16px; border-radius:var(--radius)}
+.hero-bg{position:absolute; inset:0; background-position:center; background-size:cover; will-change:transform}
+.hero-scrim{position:absolute; inset:0}
+.hero-inner{position:relative; z-index:1; color:#fff; padding:36px; max-width:760px}
+.hero-inner .badge{display:inline-block; background:rgba(255,255,255,.16); padding:6px 10px; border-radius:999px; font-size:14px}
+.hero-inner .sub{color:rgba(255,255,255,.9); margin-top:8px}
+.cta-row{display:flex; gap:10px; margin-top:14px}
+
+/* Sections */
+.section{margin-top:24px}
+.center{text-align:center}
+.logo-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
+.chip{border:1px solid #e5e7eb; border-radius:999px; padding:8px 12px}
+.panel.stat{display:flex; flex-direction:column; align-items:flex-start; gap:4px}
+.panel.imgp img{width:100%; height:220px; object-fit:cover; border-radius:12px}
+
+/* Thumbs */
+.thumbs{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px}
+.thumb{border:1px solid #e5e7eb; border-radius:12px; padding:8px; background:#fff}
+.thumb img{width:180px; height:120px; object-fit:cover; display:block; border-radius:8px}
+.thumb .mini{margin-top:6px}
+
+/* Reveal */
+.reveal{opacity:0; transform:translateY(var(--y, 12px)); transition:opacity var(--dur, 420ms) ease, transform var(--dur, 420ms) ease}
 .reveal.visible{opacity:1; transform:none}
-.logo-chip{display:inline-block; padding:10px 12px; border:1px solid var(--hair); border-radius:12px; text-align:center}
-header.site, footer.site{padding:12px 16px; display:flex; align-items:center; justify-content:space-between; border-radius:16px}
+
+/* Footer */
+footer .foot{display:flex; align-items:center; justify-content:space-between; padding:24px 0; color:#64748b}
 `;
 
-const styles = {
-  page: {
-    display: "grid",
-    gridTemplateColumns: "minmax(340px, 520px) 1fr",
-    gap: 16,
-    padding: 16,
-    maxWidth: 1440,
-    margin: "0 auto"
-  },
-  sidebar: {
-    background: "var(--panel)",
-    border: "1px solid var(--hair)",
-    borderRadius: 16,
-    boxShadow: "0 10px 30px rgba(0,0,0,.04)",
-    padding: 16,
-    alignSelf: "start"
-  },
-  sectionHeader: {},
-  grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
-  grid3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 },
-  preview: { display: "grid", gap: 16, alignContent: "start" },
-  card: {
-    background: "#fff",
-    border: "1px solid var(--hair)",
-    borderRadius: 16,
-    boxShadow: "0 10px 30px rgba(0,0,0,.04)",
-    padding: 16
-  },
-  header: { padding: 12, borderRadius: 16 },
-  footer: { padding: 16, borderRadius: 16 },
-  scrim: { position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.25))" }
-};
+/* ---------------------- Export HTML ---------------------- */
+
+function buildExportHtml(model) {
+  // Basic one-page export (hero + selected sections), self-contained CSS
+  // Uses the same styles + generated content; no JS required in the output.
+  const {
+    brand,
+    hero,
+    layout,
+    sections,
+    valueItems,
+    services,
+    proof,
+    pricing,
+    contact,
+    gallery,
+  } = model;
+
+  const css = `
+  ${baseCss}
+  :root{
+    --ink:${brand.colors.primary};
+    --accent:${brand.colors.accent};
+    --bg:${brand.colors.neutral};
+    --container:${layout.container}px;
+    --radius:${layout.radius}px;
+
+    --ts-p:16px; --ts-h6:18px; --ts-h5:20px; --ts-h4:25px; --ts-h3:31.25px; --ts-h2:39.06px; --ts-h1:48.83px;
+    --y-gap:12px;
+  }
+  .reveal,.visible{opacity:1; transform:none} /* no observer in static export */
+  .site-header.transparent{position:absolute; width:100%; background:transparent; border-bottom-color:transparent}
+  `;
+
+  const hasImg = !!hero.imageUrl;
+  const overlay = Math.min(Math.max(hero.overlay ?? 0.35, 0), 0.8);
+
+  const html = `<!doctype html>
+<html lang="en">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${escapeHtml(brand.name)} — Preview</title>
+<style>${css}</style>
+<body>
+  <div class="site-root" style="background:var(--bg)">
+    <div class="site-header ${layout.headerStyle === "transparent" ? "transparent" : ""}">
+      <div class="container head-inner">
+        <div class="logo">${escapeHtml(brand.name)}</div>
+        <nav>
+          <a href="#work">Work</a>
+          <a href="#services">Services</a>
+          <a href="#contact" class="btn sm">Contact</a>
+        </nav>
+      </div>
+    </div>
+
+    <section class="hero-block" style="border-radius:var(--radius)">
+      <div class="hero-bg ${hasImg ? "with-img" : "with-grad"}" style="background-image:${
+    hasImg
+      ? `url('${escapeAttr(hero.imageUrl)}')`
+      : `linear-gradient(120deg, ${brand.colors.primary}, ${brand.colors.accent})`
+  }"></div>
+      <div class="hero-scrim" style="background:rgba(0,0,0,${overlay})"></div>
+      <div class="hero-inner">
+        <div class="badge">${escapeHtml(brand.locations.join(" · "))}</div>
+        <h1 class="ts-h1">${escapeHtml(hero.title || brand.name)}</h1>
+        <p class="ts-h6 sub">${escapeHtml(hero.subtitle || brand.tagline)}</p>
+        <div class="cta-row">
+          ${
+            hero.primaryCta
+              ? `<a href="#contact" class="btn">${escapeHtml(hero.primaryCta)}</a>`
+              : ""
+          }
+          ${
+            hero.secondaryCta
+              ? `<a href="#work" class="btn sec">${escapeHtml(hero.secondaryCta)}</a>`
+              : ""
+          }
+        </div>
+      </div>
+    </section>
+
+    <main>
+      <div class="container">
+        ${
+          sections.value
+            ? blockCards("What you get with us", valueItems)
+            : ""
+        }
+        ${
+          sections.services
+            ? blockCards("Services", services, "services")
+            : ""
+        }
+        ${sections.proof ? blockProof(proof) : ""}
+        ${
+          sections.gallery && gallery.length
+            ? blockGallery(gallery)
+            : ""
+        }
+        ${sections.pricing ? blockPricing(pricing) : ""}
+        ${
+          sections.cta
+            ? `<section class="section center">
+                 <h2 class="ts-h2">Ready to move faster?</h2>
+                 <a href="#contact" class="btn" style="margin-top:12px">${escapeHtml(
+                   hero.primaryCta || "Get in touch"
+                 )}</a>
+               </section>`
+            : ""
+        }
+        ${sections.contact ? blockContact(contact, brand.locations) : ""}
+      </div>
+    </main>
+
+    <footer>
+      <div class="container foot">
+        <div>© ${new Date().getFullYear()} ${escapeHtml(brand.name)}</div>
+        <div class="muted">${escapeHtml(brand.locations.join(" · "))}</div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>`;
+
+  return html;
+}
+
+// helpers for export
+function blockCards(title, items, id = "") {
+  return `<section ${id ? `id="${id}"` : ""} class="section">
+    <h2 class="ts-h2">${escapeHtml(title)}</h2>
+    <div class="grid three">
+      ${items
+        .map(
+          (it) => `<div class="panel">
+            <div class="ts-h5" style="font-weight:600">${escapeHtml(it.title || "Untitled")}</div>
+            <div class="ts-h6 muted" style="margin-top:4px">${escapeHtml(it.text || "")}</div>
+          </div>`
+        )
+        .join("")}
+    </div>
+  </section>`;
+}
+function blockProof(proof) {
+  return `<section class="section">
+    <h2 class="ts-h2">Proof</h2>
+    ${
+      proof.logos?.length
+        ? `<div class="logo-row">${proof.logos
+            .map((l) => `<div class="chip">${escapeHtml(l)}</div>`)
+            .join("")}</div>`
+        : ""
+    }
+    ${
+      proof.testimonials?.length
+        ? `<div class="grid two" style="margin-top:var(--y-gap)">${proof.testimonials
+            .map(
+              (t) => `<div class="panel">
+                <div class="ts-h6" style="font-style:italic">“${escapeHtml(t.quote)}”</div>
+                <div class="ts-h6 muted" style="margin-top:8px">${escapeHtml(t.author || "")}</div>
+              </div>`
+            )
+            .join("")}</div>`
+        : ""
+    }
+    ${
+      proof.metrics?.length
+        ? `<div class="grid three" style="margin-top:var(--y-gap)">${proof.metrics
+            .map(
+              (m) => `<div class="panel stat">
+                <div class="ts-h3 accent">${escapeHtml(m.value)}</div>
+                <div class="ts-h6 muted">${escapeHtml(m.label)}</div>
+              </div>`
+            )
+            .join("")}</div>`
+        : ""
+    }
+  </section>`;
+}
+function blockPricing(tiers) {
+  return `<section class="section">
+    <h2 class="ts-h2">Pricing</h2>
+    <div class="grid three">
+      ${tiers
+        .map(
+          (t) => `<div class="panel">
+            <div class="ts-h5" style="font-weight:600">${escapeHtml(t.name)}</div>
+            <div class="ts-h3 accent" style="margin-top:4px">${escapeHtml(t.price)}</div>
+            <ul class="ts-h6 muted" style="margin-top:8px">
+              ${(t.items || []).map((x) => `<li>• ${escapeHtml(x)}</li>`).join("")}
+            </ul>
+            <a href="#contact" class="btn" style="margin-top:12px">Choose ${escapeHtml(t.name)}</a>
+          </div>`
+        )
+        .join("")}
+    </div>
+  </section>`;
+}
+function blockGallery(gallery) {
+  return `<section class="section">
+    <h2 class="ts-h2">Gallery</h2>
+    <div class="grid three">
+      ${gallery
+        .map((g, i) => `<div class="panel imgp"><img src="${escapeAttr(g.src)}" alt="${escapeAttr(g.alt || `img-${i}`)}"/></div>`)
+        .join("")}
+    </div>
+  </section>`;
+}
+function blockContact(contact, locations) {
+  return `<section class="section" id="contact">
+    <h2 class="ts-h2">Contact</h2>
+    <div class="panel">
+      <div class="ts-h6">Email: <a class="accent" href="mailto:${escapeAttr(contact.email)}">${escapeHtml(contact.email)}</a></div>
+      ${
+        locations?.length
+          ? `<div class="ts-h6 muted" style="margin-top:4px">Locations: ${escapeHtml(locations.join(" · "))}</div>`
+          : ""
+      }
+      <form class="grid two" style="margin-top:var(--y-gap)" onsubmit="return false">
+        <input class="input" placeholder="Name"/>
+        <input class="input" placeholder="Email"/>
+        <textarea class="input" rows="5" placeholder="Message"></textarea>
+        <button class="btn" style="width:fit-content">Send</button>
+      </form>
+    </div>
+  </section>`;
+}
+
+function escapeHtml(s = "") {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+function escapeAttr(s = "") {
+  return escapeHtml(s).replaceAll("\n", " ");
+}
